@@ -1,0 +1,862 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+  CHECKOUT
+  INACTIVE
+}
+
+model User {
+  id              String     @id @default(uuid())
+  email           String     @unique
+  password        String?
+  name            String?
+  phone           String?
+  emailVerified   Boolean    @default(false)
+  buildingId      String?
+  nationalId      String?
+  gender          Gender?
+  guardianName    String?
+  guardianPhone   String?
+  address         String?
+  status          UserStatus @default(PENDING)
+  submittedAt     DateTime?
+  reviewedById    String?
+  reviewedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  deletedAt       DateTime?
+
+  roles                     UserRole[]
+  publicFacilityAssignments PublicFacilityAssignment[]
+  building                  Building? @relation(fields: [buildingId], references: [id])
+  reviewedBy                User?     @relation("UserReviewer", fields: [reviewedById], references: [id])
+  reviewedUsers             User[]    @relation("UserReviewer")
+  files                     File[]    @relation("FileUploader")
+  documentSubmissions       DocumentSubmission[] @relation("DocOwner")
+  requestedDocuments        DocumentSubmission[] @relation("DocRequester")
+  reviewedDocuments         DocumentSubmission[] @relation("DocReviewer")
+  occupancies               Occupancy[]
+  invoices                  Invoice[]            @relation("InvoiceOwner")
+  createdInvoices           Invoice[]            @relation("InvoiceCreator")
+  payments                  Payment[]            @relation("PaymentPayer")
+  receivedPayments          Payment[]            @relation("PaymentReceiver")
+  expenses                  Expense[]            @relation("ExpenseCreator")
+  ledgerEntries             LedgerEntry[]        @relation("LedgerCreator")
+  positionAssignments       PositionAssignment[]
+  createdEvents             Event[]              @relation("EventCreator")
+  eventCommittees           EventCommittee[]
+  eventAttendances          EventAttendance[]
+
+  @@index([buildingId, status])
+  @@index([deletedAt])
+}
+
+enum PermissionAction {
+  CREATE
+  READ
+  UPDATE
+  DELETE
+  APPROVE
+  VERIFY
+  EXPORT
+}
+
+model Role {
+  id          String    @id @default(uuid())
+  code        String    @unique
+  name        String
+  description String?
+  isSystem    Boolean   @default(false)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  permissions RolePermission[]
+  menus       RoleMenu[]
+  users       UserRole[]
+  positions   Position[]
+
+  @@index([deletedAt])
+}
+
+model Permission {
+  id          String           @id @default(uuid())
+  code        String           @unique
+  resource    String
+  action      PermissionAction
+  description String?
+  createdAt   DateTime         @default(now())
+
+  roles RolePermission[]
+
+  @@unique([resource, action])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model Menu {
+  id        String    @id @default(uuid())
+  parentId  String?
+  code      String    @unique
+  name      String
+  path      String
+  icon      String?
+  sortOrder Int       @default(0)
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  parent   Menu?      @relation("MenuTree", fields: [parentId], references: [id])
+  children Menu[]     @relation("MenuTree")
+  roles    RoleMenu[]
+
+  @@index([parentId])
+  @@index([deletedAt])
+}
+
+model RoleMenu {
+  roleId String
+  menuId String
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  menu   Menu   @relation(fields: [menuId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, menuId])
+}
+
+model UserRole {
+  id         String    @id @default(uuid())
+  userId     String
+  roleId     String
+  buildingId String?
+  createdAt  DateTime  @default(now())
+  deletedAt  DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId, buildingId])
+  @@index([userId])
+  @@index([buildingId])
+  @@index([deletedAt])
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+model Building {
+  id        String    @id @default(uuid())
+  code      String    @unique
+  name      String
+  gender    Gender
+  address   String
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  rooms            Room[]
+  feeRules         FeeRule[]
+  publicFacilities PublicFacility[]
+  users            User[]
+  documentTypes    DocumentType[]
+  invoices         Invoice[]
+  cashAccounts     CashAccount[]
+  categories       Category[]
+  positions        Position[]
+  positionAssignments PositionAssignment[]
+  events           Event[]
+
+  @@index([deletedAt])
+}
+
+enum RoomStatus {
+  ACTIVE
+  MAINTENANCE
+}
+
+model Room {
+  id         String     @id @default(uuid())
+  buildingId String
+  number     String
+  capacity   Int
+  status     RoomStatus @default(ACTIVE)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  deletedAt  DateTime?
+
+  building       Building       @relation(fields: [buildingId], references: [id])
+  roomFacilities RoomFacility[]
+  occupancies    Occupancy[]
+
+  @@index([buildingId])
+  @@index([deletedAt])
+}
+
+enum OccupancyStatus {
+  ACTIVE
+  ENDED
+}
+
+model Occupancy {
+  id                  String          @id @default(uuid())
+  userId              String
+  roomId              String
+  bedLabel            String?
+  monthlyRateSnapshot Int
+  startDate           DateTime        @db.Date
+  endDate             DateTime?       @db.Date
+  status              OccupancyStatus @default(ACTIVE)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  deletedAt           DateTime?
+
+  user     User      @relation(fields: [userId], references: [id])
+  room     Room      @relation(fields: [roomId], references: [id])
+  invoices Invoice[]
+
+  @@index([userId])
+  @@index([roomId, status])
+  @@index([deletedAt])
+}
+
+model FeeRule {
+  id                 String   @id @default(uuid())
+  buildingId         String
+  dueDayOfMonth      Int
+  defaultMonthlyRate Int
+  effectiveFrom      DateTime @db.Date
+  createdAt          DateTime @default(now())
+  deletedAt          DateTime?
+
+  building Building @relation(fields: [buildingId], references: [id])
+
+  @@index([buildingId, effectiveFrom])
+}
+
+enum FacilityScope {
+  ROOM
+  PUBLIC
+}
+
+enum FacilityUsage {
+  ASSIGNED
+  SHARED
+}
+
+enum FacilityCategory {
+  FURNITURE
+  SANITARY
+  APPLIANCE
+  OTHER
+}
+
+model Facility {
+  id        String           @id @default(uuid())
+  code      String           @unique
+  name      String
+  scope     FacilityScope
+  usageMode FacilityUsage
+  category  FacilityCategory
+  isActive  Boolean          @default(true)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  deletedAt DateTime?
+
+  roomFacilities            RoomFacility[]
+  publicFacilities          PublicFacility[]
+  publicFacilityAssignments PublicFacilityAssignment[]
+
+  @@index([deletedAt])
+}
+
+model RoomFacility {
+  id         String    @id @default(uuid())
+  roomId     String
+  facilityId String
+  quantity   Int
+  note       String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+
+  room     Room     @relation(fields: [roomId], references: [id])
+  facility Facility @relation(fields: [facilityId], references: [id])
+
+  @@unique([roomId, facilityId])
+  @@index([roomId])
+  @@index([facilityId])
+  @@index([deletedAt])
+}
+
+enum PublicFacStatus {
+  ACTIVE
+  MAINTENANCE
+}
+
+model PublicFacility {
+  id         String          @id @default(uuid())
+  buildingId String
+  facilityId String
+  number     String?
+  capacity   Int?
+  status     PublicFacStatus @default(ACTIVE)
+  note       String?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  deletedAt  DateTime?
+
+  building    Building                  @relation(fields: [buildingId], references: [id])
+  facility    Facility                  @relation(fields: [facilityId], references: [id])
+  assignments PublicFacilityAssignment[]
+
+  @@index([buildingId])
+  @@index([facilityId])
+  @@index([deletedAt])
+}
+
+model PublicFacilityAssignment {
+  id               String    @id @default(uuid())
+  publicFacilityId String
+  userId           String
+  facilityId       String
+  slotLabel        String
+  assignedAt       DateTime  @default(now())
+  createdAt        DateTime  @default(now())
+  deletedAt        DateTime?
+
+  publicFacility PublicFacility @relation(fields: [publicFacilityId], references: [id])
+  user           User           @relation(fields: [userId], references: [id])
+  facility       Facility       @relation(fields: [facilityId], references: [id])
+
+  @@index([publicFacilityId])
+  @@index([userId])
+  @@index([facilityId])
+  @@index([deletedAt])
+}
+
+model File {
+  id           String    @id @default(uuid())
+  storageKey   String    @unique
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+  checksum     String
+  uploadedById String
+  createdAt    DateTime  @default(now())
+  deletedAt    DateTime?
+
+  uploadedBy       User                 @relation("FileUploader", fields: [uploadedById], references: [id])
+  submissions      DocumentSubmission[]
+  paymentProofs    Payment[]            @relation("PaymentProof")
+  expenseReceipts  Expense[]            @relation("ExpenseReceipt")
+  eventAttachments EventAttachment[]
+
+  @@index([uploadedById])
+  @@index([deletedAt])
+}
+
+model DocumentType {
+  id                  String    @id @default(uuid())
+  buildingId          String
+  code                String
+  name                String
+  isRequiredByDefault Boolean   @default(false)
+  isActive            Boolean   @default(true)
+  allowedMimeTypes    String[]
+  maxSizeBytes        Int
+  sortOrder           Int       @default(0)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  deletedAt           DateTime?
+
+  building    Building             @relation(fields: [buildingId], references: [id])
+  submissions DocumentSubmission[]
+
+  @@index([buildingId])
+  @@index([deletedAt])
+}
+
+enum DocStatus {
+  REQUESTED
+  UPLOADED
+  VERIFIED
+  REJECTED
+}
+
+model DocumentSubmission {
+  id              String    @id @default(uuid())
+  userId          String
+  documentTypeId  String
+  status          DocStatus @default(REQUESTED)
+  fileId          String?
+  requestedById   String?
+  reviewedById    String?
+  reviewedAt      DateTime?
+  rejectionReason String?
+  note            String?
+  version         Int       @default(1)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  user         User         @relation("DocOwner", fields: [userId], references: [id])
+  documentType DocumentType @relation(fields: [documentTypeId], references: [id])
+  file         File?        @relation(fields: [fileId], references: [id])
+  requestedBy  User?        @relation("DocRequester", fields: [requestedById], references: [id])
+  reviewedBy   User?        @relation("DocReviewer", fields: [reviewedById], references: [id])
+
+  @@unique([userId, documentTypeId, version])
+  @@index([userId])
+  @@index([documentTypeId])
+  @@index([deletedAt])
+}
+
+enum InvoiceStatus {
+  ISSUED
+  PARTIAL
+  PAID
+  OVERDUE
+  VOID
+}
+
+enum InvoiceLineKind {
+  RENT
+  DISCOUNT
+  EVENT
+  OTHER
+}
+
+model Invoice {
+  id             String        @id @default(uuid())
+  code           String        @unique
+  buildingId     String
+  userId         String
+  occupancyId    String
+  periodYear     Int
+  periodMonth    Int
+  dueDate        DateTime      @db.Date
+  baseAmount     Int
+  discountAmount Int           @default(0)
+  totalAmount    Int
+  paidAmount     Int           @default(0)
+  status         InvoiceStatus @default(ISSUED)
+  createdById    String?
+  issuedAt       DateTime      @default(now())
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+
+  building    Building            @relation(fields: [buildingId], references: [id])
+  user        User                @relation("InvoiceOwner", fields: [userId], references: [id])
+  occupancy   Occupancy           @relation(fields: [occupancyId], references: [id])
+  createdBy   User?               @relation("InvoiceCreator", fields: [createdById], references: [id])
+  lines       InvoiceLine[]
+  allocations PaymentAllocation[]
+
+  @@index([buildingId, status])
+  @@index([userId])
+  @@index([occupancyId])
+  @@index([deletedAt])
+}
+
+model InvoiceLine {
+  id          String          @id @default(uuid())
+  invoiceId   String
+  kind        InvoiceLineKind
+  description String
+  amount      Int
+  createdAt   DateTime        @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+}
+
+enum PaymentMethod {
+  CASH
+  TRANSFER
+  QRIS
+}
+
+model Payment {
+  id             String        @id @default(uuid())
+  code           String        @unique
+  userId         String
+  amount         Int
+  method         PaymentMethod
+  cashAccountId  String?
+  referenceNo    String?
+  proofFileId    String?
+  idempotencyKey String        @unique
+  paidAt         DateTime      @default(now())
+  receivedById   String?
+  note           String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+
+  user        User                @relation("PaymentPayer", fields: [userId], references: [id])
+  receivedBy  User?               @relation("PaymentReceiver", fields: [receivedById], references: [id])
+  proofFile   File?               @relation("PaymentProof", fields: [proofFileId], references: [id])
+  cashAccount CashAccount?        @relation(fields: [cashAccountId], references: [id])
+  allocations PaymentAllocation[]
+
+  @@index([userId])
+  @@index([deletedAt])
+}
+
+model PaymentAllocation {
+  id        String   @id @default(uuid())
+  paymentId String
+  invoiceId String
+  amount    Int
+  createdAt DateTime @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@unique([paymentId, invoiceId])
+  @@index([invoiceId])
+}
+
+enum CashAccountType {
+  CASH
+  BANK
+}
+
+model CashAccount {
+  id             String          @id @default(uuid())
+  buildingId     String
+  name           String
+  type           CashAccountType @default(CASH)
+  openingBalance Int             @default(0)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  deletedAt      DateTime?
+
+  building      Building      @relation(fields: [buildingId], references: [id])
+  expenses      Expense[]
+  ledgerEntries LedgerEntry[]
+  payments      Payment[]
+
+  @@index([buildingId])
+  @@index([deletedAt])
+}
+
+enum CategoryKind {
+  INCOME
+  EXPENSE
+}
+
+model Category {
+  id         String       @id @default(uuid())
+  buildingId String
+  name       String
+  kind       CategoryKind
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  deletedAt  DateTime?
+
+  building      Building      @relation(fields: [buildingId], references: [id])
+  expenses      Expense[]
+  ledgerEntries LedgerEntry[]
+
+  @@index([buildingId, kind])
+  @@index([deletedAt])
+}
+
+model Expense {
+  id             String    @id @default(uuid())
+  cashAccountId  String
+  categoryId     String
+  amount         Int
+  occurredAt     DateTime  @db.Date
+  vendor         String?
+  description    String?
+  receiptFileId  String
+  eventId        String?
+  createdById    String
+  idempotencyKey String    @unique
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  cashAccount CashAccount @relation(fields: [cashAccountId], references: [id])
+  category    Category    @relation(fields: [categoryId], references: [id])
+  receiptFile File        @relation("ExpenseReceipt", fields: [receiptFileId], references: [id])
+  createdBy   User        @relation("ExpenseCreator", fields: [createdById], references: [id])
+  event       Event?      @relation(fields: [eventId], references: [id])
+
+  @@index([cashAccountId])
+  @@index([categoryId])
+  @@index([eventId])
+  @@index([deletedAt])
+}
+
+enum LedgerDirection {
+  IN
+  OUT
+}
+
+enum LedgerSource {
+  PAYMENT
+  EXPENSE
+  ADJUSTMENT
+  TRANSFER
+  OPENING
+  REVERSAL
+}
+
+model LedgerEntry {
+  id             String          @id @default(uuid())
+  cashAccountId  String
+  direction      LedgerDirection
+  amount         Int
+  categoryId     String
+  sourceType     LedgerSource
+  sourceId       String?
+  idempotencyKey String          @unique
+  occurredAt     DateTime        @default(now())
+  description    String?
+  createdById    String?
+  createdAt      DateTime        @default(now())
+
+  cashAccount CashAccount @relation(fields: [cashAccountId], references: [id])
+  category    Category    @relation(fields: [categoryId], references: [id])
+  createdBy   User?       @relation("LedgerCreator", fields: [createdById], references: [id])
+
+  @@index([cashAccountId, occurredAt])
+  @@index([categoryId])
+}
+
+model Period {
+  id           String    @id @default(uuid())
+  code         String    @unique
+  name         String
+  startDate    DateTime  @db.Date
+  endDate      DateTime  @db.Date
+  decreeNumber String?
+  isActive     Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  assignments PositionAssignment[]
+
+  @@index([deletedAt])
+}
+
+model Position {
+  id          String    @id @default(uuid())
+  code        String
+  name        String
+  level       Int       @default(0)
+  buildingId  String?
+  roleId      String?
+  description String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  building       Building?            @relation(fields: [buildingId], references: [id])
+  role           Role?                @relation(fields: [roleId], references: [id])
+  assignments    PositionAssignment[]
+  eventCommittees EventCommittee[]
+
+  @@index([buildingId])
+  @@index([deletedAt])
+}
+
+model PositionAssignment {
+  id           String    @id @default(uuid())
+  periodId     String
+  positionId   String
+  userId       String
+  buildingId   String?
+  startDate    DateTime  @db.Date
+  endDate      DateTime? @db.Date
+  isActive     Boolean   @default(true)
+  decreeNumber String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  period   Period   @relation(fields: [periodId], references: [id])
+  position Position @relation(fields: [positionId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+  building Building? @relation(fields: [buildingId], references: [id])
+
+  @@index([userId])
+  @@index([buildingId])
+  @@index([deletedAt])
+}
+
+enum EventCategory {
+  RUTIN
+  BESAR
+}
+
+enum EventScope {
+  ASRAMA
+  GEDUNG
+}
+
+enum EventStatus {
+  PLANNED
+  ONGOING
+  DONE
+  CANCELLED
+}
+
+enum EventRecurrence {
+  NONE
+  WEEKLY
+  MONTHLY
+}
+
+enum AttendanceStatus {
+  HADIR
+  IZIN
+  TIDAK
+}
+
+enum EventAttachmentKind {
+  PROPOSAL
+  NOTULEN
+  LPJ
+  FOTO
+  OTHER
+}
+
+model Event {
+  id           String          @id @default(uuid())
+  title        String
+  description  String?
+  category     EventCategory
+  isAdHoc      Boolean         @default(false)
+  scope        EventScope
+  buildingId   String?
+  startAt      DateTime
+  endAt        DateTime?
+  location     String?
+  budgetAmount Int?
+  status       EventStatus     @default(PLANNED)
+  isPublic     Boolean         @default(false)
+  recurrence   EventRecurrence @default(NONE)
+  createdById  String
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  deletedAt    DateTime?
+
+  building    Building?         @relation(fields: [buildingId], references: [id])
+  createdBy   User              @relation("EventCreator", fields: [createdById], references: [id])
+  sessions    EventSession[]
+  committees  EventCommittee[]
+  attachments EventAttachment[]
+  expenses    Expense[]
+
+  @@index([buildingId, startAt])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+model EventSession {
+  id          String    @id @default(uuid())
+  eventId     String
+  title       String?
+  scheduledAt DateTime
+  startAt     DateTime?
+  endAt       DateTime?
+  location    String?
+  note        String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  event       Event             @relation(fields: [eventId], references: [id])
+  attendances EventAttendance[]
+
+  @@index([eventId])
+  @@index([deletedAt])
+}
+
+model EventCommittee {
+  id         String    @id @default(uuid())
+  eventId    String
+  userId     String
+  eventRole  String
+  positionId String?
+  createdAt  DateTime  @default(now())
+  deletedAt  DateTime?
+
+  event    Event     @relation(fields: [eventId], references: [id])
+  user     User      @relation(fields: [userId], references: [id])
+  position Position? @relation(fields: [positionId], references: [id])
+
+  @@index([eventId])
+  @@index([userId])
+  @@index([deletedAt])
+}
+
+model EventAttendance {
+  id          String           @id @default(uuid())
+  sessionId   String
+  userId      String
+  status      AttendanceStatus @default(TIDAK)
+  checkedInAt DateTime?
+  note        String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  deletedAt   DateTime?
+
+  session EventSession @relation(fields: [sessionId], references: [id])
+  user    User         @relation(fields: [userId], references: [id])
+
+  @@index([sessionId])
+  @@index([userId])
+  @@index([deletedAt])
+}
+
+model EventAttachment {
+  id        String              @id @default(uuid())
+  eventId   String
+  fileId    String
+  kind      EventAttachmentKind
+  note      String?
+  createdAt DateTime            @default(now())
+  deletedAt DateTime?
+
+  event Event @relation(fields: [eventId], references: [id])
+  file  File  @relation(fields: [fileId], references: [id])
+
+  @@index([eventId])
+  @@index([deletedAt])
+}
