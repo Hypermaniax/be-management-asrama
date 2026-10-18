@@ -484,17 +484,33 @@ Aturan umum: `asyncHandler` untuk semua handler, error via `AppError`, semua que
 
 ---
 
-## FASE 15 — Audit
+## FASE 15 — Audit ✅
 
 **Tujuan:** jejak perubahan.
 
-- [ ] Skema: model `AuditLog { id, actorId, action, entity, entityId, before Json?, after Json?, ip?, createdAt }`, index `[entity, entityId]`
-- [ ] Migrasi `--name add_audit_log`
-- [ ] `src/repositories/audit.ts`: `record(...)`, `list(...)`
-- [ ] `src/middleware/audit.ts`: helper `audit(actor, action, entity, before, after)`
-- [ ] Panggil dari service keuangan & RBAC
-- [ ] controller, route (izin `audit.read`)
-- [ ] Verifikasi: perubahan tercatat
+> **Keputusan (Fase 15):** `AuditLog` **immutable** (tanpa `deletedAt`/update). Helper `auditRequest(req, meta)` di `src/middleware/audit.ts` mencatat `actorId` (dari `req.user`) + `ip` (`req.ip`), **tidak pernah melempar** (kegagalan audit tidak menggagalkan operasi). Nilai sensitif (`password`/`token`/`secret`) di-`redact` di service sebelum disimpan. Dipanggil dari controller **RBAC** + **keuangan** (cashAccount, category, expense, ledger income/reversal, payment). Route `GET /api/audit-logs` + `/:id` (izin `audit.READ`, menu `system.audit`).
+
+- [x] Skema: model `AuditLog { id, actorId, action, entity, entityId, before Json?, after Json?, ip?, createdAt }`, index `[entity, entityId]`, `[actorId]`, `[createdAt]`
+- [x] Migrasi `add_audit_log` (`20261018200000_add_audit_log`)
+- [x] `src/repositories/audit.ts`: `record(...)`, `list(filters)`, `findById(...)` + type
+- [x] `src/lib/audit.ts`: `AuditInput`, `AuditRecorder`, `redact(...)`
+- [x] `src/services/audit/service.ts` + `service.test.ts`
+- [x] `src/middleware/audit.ts`: helper `auditRequest(req, { action, entity, entityId, before, after })`
+- [x] Panggil dari controller RBAC & keuangan (cashAccount, category, expense, ledger, payment)
+- [x] `src/controller/audit.ts` + `src/routes/audit/audit.ts` (izin `audit.READ`), mount `/api/audit-logs`, wiring `auditService`
+
+### 15.1 Perluasan — audit otomatis semua mutasi admin
+
+- [x] Kolom `path String?` di `AuditLog` + migrasi `add_audit_path` (`20261018210000_add_audit_path`)
+- [x] `auditMutations` middleware di `src/middleware/audit.ts` (mount di `src/routes/route.ts` setelah `requireAccess`):
+  - Menangkap **semua** `POST/PUT/PATCH/DELETE` sukses (`status < 400`) — GET dilewati
+  - Menangkap body respons (`res.json`) untuk `after`; `entityId` = `data.id` → `params.id`
+  - `resolveAuditMeta` ambil `action`/`entity` dari **marker permission** route (fallback method + segmen path)
+  - **Filter aktor**: hanya `SUPER_ADMIN` & `ADMIN_GEDUNG` (role lain tidak dicatat)
+  - **Tidak pernah melempar**; fire-and-forget
+- [x] Anti-duplikat: `auditRequest` (log kaya RBAC/keuangan) menandai `req.__audited` → middleware generik skip
+- [x] `src/middleware/audit.test.ts` (4 test `resolveAuditMeta`)
+- [x] Verifikasi: `npm test` **160/160** ✅; smoke `curl` **19/19** ✅ (room/event/period/election tercatat + path; log manual tidak dobel; mutasi warga **tidak** tercatat; aksi ADMIN_GEDUNG tercatat)
 
 ---
 

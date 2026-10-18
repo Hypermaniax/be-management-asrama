@@ -1,6 +1,8 @@
 import express from "express";
 import type { Request, Response } from "express";
+import { auditMutations } from "../middleware/audit.ts";
 import { requireAccess } from "../middleware/permission.ts";
+import { router as auditRouter } from "./audit/audit.ts";
 import { router as authRouter } from "./auth/auth.ts";
 import { router as buildingRouter } from "./building/building.ts";
 import { router as cashAccountRouter } from "./cashAccount/cashAccount.ts";
@@ -48,6 +50,8 @@ router.use((req, res, next) => {
   return requireAccess(req, res, next);
 });
 
+router.use(auditMutations);
+
 router.get("/health", (_req: Request, res: Response) => {
   return res.json({ status: "health is okay" });
 });
@@ -72,3 +76,4 @@ mount("/organization", organizationRouter);
 mount("/residents", residentRouter);
 mount("/documents", documentRouter);
 mount("/files", fileRouter);
+mount("/audit-logs", auditRouter);

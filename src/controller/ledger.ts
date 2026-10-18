@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { cashService } from "../container.ts";
 import { AppError } from "../lib/errors.ts";
+import { auditRequest } from "../middleware/audit.ts";
 import { assertBuildingAccess } from "../middleware/buildingScope.ts";
 import type { ScopedRequest } from "../middleware/buildingScope.ts";
 import type { AccessRequest } from "../middleware/permission.ts";
@@ -39,6 +40,12 @@ export const ledgerController = {
       ...data,
       createdById: user?.id ?? null,
     });
+    await auditRequest(req, {
+      action: "CREATE",
+      entity: "ledgerEntry",
+      entityId: entry.id,
+      after: entry,
+    });
     res.status(201).json({ status: "income recorded", data: entry });
   },
 
@@ -50,6 +57,12 @@ export const ledgerController = {
     const { reason } = reversalSchema.parse(req.body);
     const { user } = req as AccessRequest;
     const reversal = await cashService.reverseLedgerEntry(id, reason, user?.id ?? null);
+    await auditRequest(req, {
+      action: "REVERSE",
+      entity: "ledgerEntry",
+      entityId: id,
+      after: { reversalId: reversal.id, reason },
+    });
     res.json({ status: "entry reversed", data: reversal });
   },
 };

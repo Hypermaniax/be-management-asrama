@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { cashService } from "../container.ts";
 import { AppError } from "../lib/errors.ts";
+import { auditRequest } from "../middleware/audit.ts";
 import { assertBuildingAccess } from "../middleware/buildingScope.ts";
 import type { ScopedRequest } from "../middleware/buildingScope.ts";
 import type { AccessRequest } from "../middleware/permission.ts";
@@ -30,6 +31,12 @@ export const expenseController = {
     const expense = await cashService.recordExpense({
       ...data,
       createdById: user?.id ?? null,
+    });
+    await auditRequest(req, {
+      action: "CREATE",
+      entity: "expense",
+      entityId: expense.id,
+      after: expense,
     });
     res.status(201).json({ status: "expense recorded", data: expense });
   },

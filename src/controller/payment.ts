@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { billingService } from "../container.ts";
 import { AppError } from "../lib/errors.ts";
+import { auditRequest } from "../middleware/audit.ts";
 import type { ScopedRequest } from "../middleware/buildingScope.ts";
 import type { AccessRequest } from "../middleware/permission.ts";
 import { listPaymentQuerySchema, recordPaymentSchema } from "../validations/billing.ts";
@@ -27,6 +28,12 @@ export const paymentController = {
     const payment = await billingService.recordPayment({
       ...data,
       receivedById: user?.id ?? null,
+    });
+    await auditRequest(req, {
+      action: "CREATE",
+      entity: "payment",
+      entityId: payment.id,
+      after: payment,
     });
     res.status(201).json({ status: "payment recorded", data: payment });
   },

@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { cashService } from "../container.ts";
 import { AppError } from "../lib/errors.ts";
+import { auditRequest } from "../middleware/audit.ts";
 import { assertBuildingAccess } from "../middleware/buildingScope.ts";
 import type { ScopedRequest } from "../middleware/buildingScope.ts";
 import {
@@ -29,6 +30,12 @@ export const categoryController = {
     const data = createCategorySchema.parse(req.body);
     assertBuildingAccess(req, data.buildingId);
     const category = await cashService.createCategory(data);
+    await auditRequest(req, {
+      action: "CREATE",
+      entity: "category",
+      entityId: category.id,
+      after: category,
+    });
     res.status(201).json({ status: "category created", data: category });
   },
 
@@ -44,6 +51,13 @@ export const categoryController = {
     assertBuildingAccess(req, existing.buildingId);
     const data = updateCategorySchema.parse(req.body);
     const category = await cashService.updateCategory(id, data);
+    await auditRequest(req, {
+      action: "UPDATE",
+      entity: "category",
+      entityId: id,
+      before: existing,
+      after: category,
+    });
     res.json({ status: "category updated", data: category });
   },
 
@@ -52,6 +66,12 @@ export const categoryController = {
     const existing = await cashService.getCategory(id);
     assertBuildingAccess(req, existing.buildingId);
     await cashService.deleteCategory(id);
+    await auditRequest(req, {
+      action: "DELETE",
+      entity: "category",
+      entityId: id,
+      before: existing,
+    });
     res.json({ status: "category deleted" });
   },
 };

@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { cashService } from "../container.ts";
 import { AppError } from "../lib/errors.ts";
+import { auditRequest } from "../middleware/audit.ts";
 import { assertBuildingAccess } from "../middleware/buildingScope.ts";
 import type { ScopedRequest } from "../middleware/buildingScope.ts";
 import { createCashAccountSchema, updateCashAccountSchema } from "../validations/cash.ts";
@@ -25,6 +26,12 @@ export const cashAccountController = {
     const data = createCashAccountSchema.parse(req.body);
     assertBuildingAccess(req, data.buildingId);
     const account = await cashService.createCashAccount(data);
+    await auditRequest(req, {
+      action: "CREATE",
+      entity: "cashAccount",
+      entityId: account.id,
+      after: account,
+    });
     res.status(201).json({ status: "cash account created", data: account });
   },
 
@@ -45,6 +52,13 @@ export const cashAccountController = {
     assertBuildingAccess(req, existing.buildingId);
     const data = updateCashAccountSchema.parse(req.body);
     const account = await cashService.updateCashAccount(id, data);
+    await auditRequest(req, {
+      action: "UPDATE",
+      entity: "cashAccount",
+      entityId: id,
+      before: existing,
+      after: account,
+    });
     res.json({ status: "cash account updated", data: account });
   },
 
@@ -53,6 +67,12 @@ export const cashAccountController = {
     const existing = await cashService.getCashAccount(id);
     assertBuildingAccess(req, existing.buildingId);
     await cashService.deleteCashAccount(id);
+    await auditRequest(req, {
+      action: "DELETE",
+      entity: "cashAccount",
+      entityId: id,
+      before: existing,
+    });
     res.json({ status: "cash account deleted" });
   },
 

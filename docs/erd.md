@@ -464,6 +464,7 @@ erDiagram
     string action
     string entity
     string entityId
+    string path
     json before
     json after
     string ip
@@ -682,7 +683,7 @@ enum ElectionStatus   { DRAFT SCHEDULED OPEN CLOSED DONE CANCELLED }
 | `DocumentType`       | Katalog dokumen dinamis (KTP, KTM, …)   |
 | `DocumentSubmission` | Permintaan/unggahan + status verifikasi |
 | `File`               | Metadata biner; isi di object storage   |
-| `AuditLog`           | Jejak perubahan data                    |
+| `AuditLog`           | Jejak perubahan data (**immutable**; `actorId` wajib + `ip` + `path`; field sensitif di-`redact`). Diisi otomatis oleh middleware untuk **semua mutasi oleh `SUPER_ADMIN`/`ADMIN_GEDUNG`**, plus log manual kaya (`before`/`after`) untuk RBAC & keuangan |
 
 ### Kegiatan
 

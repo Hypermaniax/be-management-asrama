@@ -3,6 +3,7 @@ import { createEmailQueue } from "./lib/emailQueue.ts";
 import { sendOtpEmail } from "./lib/mailer.ts";
 import { runTransaction } from "./lib/prisma.ts";
 import { createLocalStorage } from "./lib/storage.ts";
+import { auditRepository } from "./repositories/audit.ts";
 import { cashAccountRepository } from "./repositories/cashAccounts.ts";
 import { categoryRepository } from "./repositories/categories.ts";
 import { documentRepository } from "./repositories/documents.ts";
@@ -40,6 +41,7 @@ import { roomFacilityRepository } from "./repositories/roomFacilities.ts";
 import { roomRepository } from "./repositories/rooms.ts";
 import { userRepository } from "./repositories/users.ts";
 import { userRoleRepository } from "./repositories/userRoles.ts";
+import { createAuditService } from "./services/audit/service.ts";
 import { createAuthService } from "./services/auth/service.ts";
 import { createBillingService } from "./services/billing/service.ts";
 import { createBuildingService } from "./services/building/service.ts";
@@ -86,6 +88,10 @@ export const rbacService = createRbacService({
   userRoles: userRoleRepository,
   rolePermissions: rolePermissionRepository,
   roleMenus: roleMenuRepository,
+});
+
+export const auditService = createAuditService({
+  audit: auditRepository,
 });
 
 export const buildingService = createBuildingService({
