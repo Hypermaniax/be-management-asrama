@@ -770,11 +770,11 @@ Alur pendaftaran:
 | `EventSession`                        | partial unik `[eventId, scheduledAt] WHERE deletedAt IS NULL`                                                         |
 | `EventCommittee`                      | partial unik `[eventId, userId] WHERE deletedAt IS NULL`                                                              |
 | `EventAttendance`                     | partial unik `[sessionId, userId] WHERE deletedAt IS NULL`                                                            |
-| `Election` | `code` unik; hanya 1 election `OPEN` per gedung/scope |
+| `Election` | `code` unik; partial unik `COALESCE(buildingId,'') WHERE status='OPEN' AND deletedAt IS NULL` (1 election `OPEN` per scope) |
 | `ElectionEligibleRole` | `@@id([electionId, roleId])` |
-| `ElectionCandidate` | `@@unique([electionId, userId])` |
-| `ElectionVote` | `@@unique([electionId, voterId])` — 1 warga 1 suara |
-| `ElectionResult` | `@@unique([electionId, candidateId])` |
+| `ElectionCandidate` | partial unik `[electionId, userId] WHERE deletedAt IS NULL` (boleh didaftarkan ulang setelah soft delete) |
+| `ElectionVote` | `@@unique([electionId, voterId])` — 1 warga 1 suara; immutable |
+| `ElectionResult` | `@@unique([electionId, candidateId])`; immutable (diisi saat `CLOSED`) |
 
 ## Soft delete & immutability
 

@@ -28,7 +28,7 @@ export const ROLE_PERMISSIONS: Record<string, Partial<Record<string, PermissionA
     position: ["CREATE", "READ", "UPDATE", "DELETE"],
     period: ["READ"],
     event: ["CREATE", "READ", "UPDATE", "DELETE"],
-    election: ["READ"],
+    election: ["CREATE", "READ", "UPDATE", "DELETE"],
   },
   PENGHUNI: {
     invoice: ["READ"],

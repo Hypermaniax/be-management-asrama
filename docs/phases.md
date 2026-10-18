@@ -429,61 +429,58 @@ Aturan umum: `asyncHandler` untuk semua handler, error via `AppError`, semua que
 
 ---
 
-## FASE 14 — Pemilihan Ketua Asrama
+## FASE 14 — Pemilihan Ketua Asrama ✅
 
 **Tujuan:** pemilihan ketua oleh warga; pemilih ditentukan **by role**; hasil direkam & tampil setelah `CLOSED`; pemenang disahkan jadi ketua.
 
+> **Keputusan (Fase 14):** pemilih sah = **role eligible** (`ElectionEligibleRole`, default `PENGHUNI`) **dan** `Occupancy` aktif. Kandidat juga warga aktif (`PENGHUNI` + `Occupancy` aktif). `closeElection` **menghitung & menyimpan `ElectionResult`** dalam satu transaksi. `finalize` memerlukan `Election.periodId` (400 bila kosong), **menutup penugasan KETUA aktif** untuk periode itu lalu membuat penugasan baru, status → `DONE`. Partial unik: `ElectionCandidate [electionId,userId] WHERE deletedAt IS NULL`; **hanya 1 `OPEN` per scope** `COALESCE(buildingId,'') WHERE status='OPEN' AND deletedAt IS NULL`. `ElectionVote`/`ElectionResult` immutable (tanpa `deletedAt`).
+
 ### 14.1 Skema
 
-- [ ] Enum `ElectionStatus { DRAFT SCHEDULED OPEN CLOSED DONE CANCELLED }`
-- [ ] Model `Election { id, code @unique, title, description?, periodId?, buildingId?, startAt, endAt, status @default(DRAFT), allowAbstain @default(true), createdById, createdAt, updatedAt, deletedAt? }`
+- [x] Enum `ElectionStatus { DRAFT SCHEDULED OPEN CLOSED DONE CANCELLED }`
+- [x] Model `Election { id, code @unique, title, description?, periodId?, buildingId?, startAt, endAt, status @default(DRAFT), allowAbstain @default(true), createdById, createdAt, updatedAt, deletedAt? }`
   - index `[status]`; `buildingId` null = asrama-wide
-- [ ] Model `ElectionEligibleRole { electionId, roleId }` — `@@id([electionId, roleId])` (**by role**, default seed `PENGHUNI`)
-- [ ] Model `ElectionCandidate { id, electionId, userId, orderNo @default(0), vision?, mission?, createdAt, updatedAt, deletedAt? }`
-  - `@@unique([electionId, userId])`
-- [ ] Model `ElectionVote { id, electionId, voterId, candidateId?, castAt @default(now()), createdAt }`
-  - `@@unique([electionId, voterId])` — **1 warga 1 suara**; `candidateId` null = abstain
-  - **immutable** (tanpa `deletedAt`)
-- [ ] Model `ElectionResult { id, electionId, candidateId?, votes, percentage, rank, recordedAt @default(now()) }`
-  - `@@unique([electionId, candidateId])`; **immutable** (diisi saat `CLOSED`)
-- [ ] Migrasi `npm run db:migrate -- --name add_election`
-- [ ] Verifikasi: `npm run typecheck`
+- [x] Model `ElectionEligibleRole { electionId, roleId }` — `@@id([electionId, roleId])` (**by role**, default `PENGHUNI`)
+- [x] Model `ElectionCandidate` — partial unik `[electionId, userId] WHERE deletedAt IS NULL`
+- [x] Model `ElectionVote { candidateId? }` — `@@unique([electionId, voterId])` (**1 warga 1 suara**; `candidateId` null = abstain); **immutable**
+- [x] Model `ElectionResult { votes, percentage, rank }` — `@@unique([electionId, candidateId])`; **immutable** (diisi saat `CLOSED`)
+- [x] Migrasi `add_election` (`20261018190000_add_election`) + raw partial uniques
+- [x] Verifikasi: `npm run typecheck` ✅
 
 ### 14.2 Repository
 
-- [ ] `src/repositories/elections.ts`: `create`, `findById`, `list`, `setStatus`, `softDelete` + type
-- [ ] `src/repositories/electionEligibleRoles.ts`: `setForElection(electionId, roleIds)`, `listByElection` + type
-- [ ] `src/repositories/electionCandidates.ts`: `add`, `listByElection`, `remove` + type
-- [ ] `src/repositories/electionVotes.ts`: `cast`, `findByVoter`, `countByCandidate`, `listByElection` + type
-- [ ] `src/repositories/electionResults.ts`: `saveMany(electionId, rows)`, `listByElection` + type
-- [ ] Verifikasi: `npm run typecheck`
+- [x] `src/repositories/elections.ts`: `create`, `findById`, `findByCode`, `findOpenByScope`, `list`, `update`, `setStatus`, `softDelete` + type
+- [x] `src/repositories/electionEligibleRoles.ts`: `setForElection(electionId, roleIds, client?)`, `listByElection` + type
+- [x] `src/repositories/electionCandidates.ts`: `add`, `findById`, `findByUser`, `listByElection`, `remove` + type
+- [x] `src/repositories/electionVotes.ts`: `cast`, `findByVoter`, `listByElection`, `countByCandidate` + type
+- [x] `src/repositories/electionResults.ts`: `saveMany(electionId, rows, client?)`, `listByElection` + type
+- [x] Verifikasi: `npm run typecheck` ✅
 
 ### 14.3 Service
 
-- [ ] `src/services/election/service.ts` → `createElectionService({ elections, eligibleRoles, candidates, votes, results, users, userRoles, occupancies, positionAssignments })`:
-  - `createElection(data, eligibleRoleIds?)`, `openElection(id)`, `closeElection(id)`
-  - `setEligibleRoles(electionId, roleIds)`
-  - `addCandidate(electionId, userId, { vision, mission })` — validasi user **warga aktif** (`PENGHUNI` + `Occupancy` aktif)
-  - `isEligibleVoter(electionId, userId)` — cek **role eligible** (`ElectionEligibleRole`) **dan** `Occupancy` **aktif**
-  - `castVote(electionId, voterId, candidateId?)` — hanya saat `OPEN`; wajib eligible; tolak double vote; validasi `allowAbstain`
-  - `tally(electionId)` — hasil per kandidat + abstain (dihitung dari `ElectionVote`)
-  - `publishResult(electionId)` — saat `CLOSED`: hitung & simpan `ElectionResult` (votes, %, rank); hasil hanya bisa dibaca setelah `CLOSED`
-  - `finalize(electionId, { candidateId?, positionId })` — sahkan pemenang (atau tetapkan langsung) → buat `PositionAssignment` jabatan `KETUA`; status → `DONE`
-- [ ] Verifikasi: `npm run typecheck`
+- [x] `src/services/election/service.ts` → `createElectionService({ elections, eligibleRoles, candidates, votes, results, users, userRoles, roles, occupancies, periods, buildings, positions, positionAssignments, transaction })`:
+  - `createElection` (default eligible = `PENGHUNI`), `updateElection`, `deleteElection`, `listElections`, `getElection`, `getElectionDetail`
+  - `setEligibleRoles`, `openElection` (tolak jika sudah ada `OPEN` di scope), `closeElection` (hitung + simpan hasil), `cancelElection`
+  - `addCandidate` (validasi warga aktif), `removeCandidate`, `listCandidates`
+  - `isEligibleVoter` — role eligible **dan** `Occupancy` aktif
+  - `castVote` — hanya `OPEN`; wajib eligible; tolak double vote; validasi `allowAbstain`
+  - `tally`, `publishResult`, `getResult` (hanya `CLOSED`/`DONE`)
+  - `finalize` — sahkan pemenang (atau `candidateId` eksplisit) → `PositionAssignment` KETUA; status → `DONE`
+- [x] Verifikasi: `npm run typecheck` ✅
 
 ### 14.4 HTTP
 
-- [ ] `src/validations/election.ts`: `electionSchema`, `eligibleRoleSchema`, `candidateSchema`, `voteSchema`, `finalizeSchema`
-- [ ] `src/controller/election.ts` + `src/routes/election/election.ts` (izin `election.*`; `PENGHUNI` boleh lihat + voting)
-- [ ] Mount `router.use("/elections", electionRouter)` di `src/routes/route.ts`
-- [ ] Endpoint: `POST|GET /api/elections`, `GET|PATCH /api/elections/:id`, `PUT /api/elections/:id/eligible-roles`, `POST /api/elections/:id/open`, `POST /api/elections/:id/close`, `POST|GET /api/elections/:id/candidates`, `DELETE /api/elections/:id/candidates/:candidateId`, `POST /api/elections/:id/vote`, `GET /api/elections/:id/result` (hanya `CLOSED`), `POST /api/elections/:id/finalize`
-- [ ] Wiring `electionService` di `src/container.ts`
-- [ ] Verifikasi: `curl`
+- [x] `src/validations/election.ts`: `electionSchema`, `updateElectionSchema`, `eligibleRoleSchema`, `candidateSchema`, `voteSchema`, `finalizeSchema`, `listElectionQuerySchema`
+- [x] `src/controller/election.ts` + `src/routes/election/election.ts` (izin `election.*`; `PENGHUNI` lihat + voting via `election.READ`)
+- [x] Mount `mount("/elections", electionRouter)` di `src/routes/route.ts`
+- [x] Endpoint: `POST|GET /api/elections`, `GET|PATCH|DELETE /api/elections/:id`, `PUT /api/elections/:id/eligible-roles`, `POST /api/elections/:id/open`, `POST /api/elections/:id/close`, `POST /api/elections/:id/cancel`, `POST|GET /api/elections/:id/candidates`, `DELETE /api/elections/:id/candidates/:candidateId`, `POST /api/elections/:id/vote`, `GET /api/elections/:id/result` (hanya `CLOSED`/`DONE`), `POST /api/elections/:id/finalize`
+- [x] Wiring `electionService` di `src/container.ts`; `roleSeeder` `ADMIN_GEDUNG.election` = CRUD (dalam scope gedung)
+- [x] Verifikasi: `curl` ✅
 
 ### 14.5 Test
 
-- [ ] `src/services/election/service.test.ts`: 1 warga 1 suara; voter non-role / tanpa `Occupancy` aktif ditolak; kandidat boleh memilih; hasil **403/404 saat `OPEN`** dan tampil saat `CLOSED`; `publishResult` menyimpan `ElectionResult`; `finalize` membuat jabatan `KETUA`
-- [ ] Verifikasi: `npm test`
+- [x] `src/services/election/service.test.ts`: 1 warga 1 suara; voter non-role / tanpa `Occupancy` aktif ditolak; kandidat boleh memilih; hasil **403 saat `OPEN`** dan tampil saat `CLOSED`; `closeElection` menyimpan `ElectionResult`; `finalize` membuat jabatan `KETUA`; default eligible role; tie → 409
+- [x] Verifikasi: `npm test` **153/153** ✅; smoke `curl` **20/20** ✅
 
 ---
 

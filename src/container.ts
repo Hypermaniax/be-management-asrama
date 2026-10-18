@@ -6,6 +6,11 @@ import { createLocalStorage } from "./lib/storage.ts";
 import { cashAccountRepository } from "./repositories/cashAccounts.ts";
 import { categoryRepository } from "./repositories/categories.ts";
 import { documentRepository } from "./repositories/documents.ts";
+import { electionCandidateRepository } from "./repositories/electionCandidates.ts";
+import { electionEligibleRoleRepository } from "./repositories/electionEligibleRoles.ts";
+import { electionRepository } from "./repositories/elections.ts";
+import { electionResultRepository } from "./repositories/electionResults.ts";
+import { electionVoteRepository } from "./repositories/electionVotes.ts";
 import { eventAttachmentRepository } from "./repositories/eventAttachments.ts";
 import { eventAttendanceRepository } from "./repositories/eventAttendances.ts";
 import { eventCommitteeRepository } from "./repositories/eventCommittees.ts";
@@ -40,6 +45,7 @@ import { createBillingService } from "./services/billing/service.ts";
 import { createBuildingService } from "./services/building/service.ts";
 import { createCashService } from "./services/cash/service.ts";
 import { createDocumentService } from "./services/document/service.ts";
+import { createElectionService } from "./services/election/service.ts";
 import { createEventService } from "./services/event/service.ts";
 import { createFacilityService } from "./services/facility/service.ts";
 import { createFeeRuleService } from "./services/feeRule/service.ts";
@@ -155,6 +161,23 @@ export const eventService = createEventService({
   positions: positionRepository,
   files: fileRepository,
   cash: cashService,
+});
+
+export const electionService = createElectionService({
+  elections: electionRepository,
+  eligibleRoles: electionEligibleRoleRepository,
+  candidates: electionCandidateRepository,
+  votes: electionVoteRepository,
+  results: electionResultRepository,
+  users: userRepository,
+  userRoles: userRoleRepository,
+  roles: roleRepository,
+  occupancies: occupancyRepository,
+  periods: periodRepository,
+  buildings: buildingRepository,
+  positions: positionRepository,
+  positionAssignments: positionAssignmentRepository,
+  transaction: runTransaction,
 });
 
 export const organizationService = createOrganizationService({

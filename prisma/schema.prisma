@@ -62,6 +62,9 @@ model User {
   createdEvents             Event[]              @relation("EventCreator")
   eventCommittees           EventCommittee[]
   eventAttendances          EventAttendance[]
+  createdElections          Election[]           @relation("ElectionCreator")
+  electionCandidacies       ElectionCandidate[]
+  electionVotes             ElectionVote[]       @relation("ElectionVoter")
 
   @@index([buildingId, status])
   @@index([deletedAt])
@@ -88,10 +91,11 @@ model Role {
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
-  permissions RolePermission[]
-  menus       RoleMenu[]
-  users       UserRole[]
-  positions   Position[]
+  permissions   RolePermission[]
+  menus         RoleMenu[]
+  users         UserRole[]
+  positions     Position[]
+  eligibleFor   ElectionEligibleRole[]
 
   @@index([deletedAt])
 }
@@ -192,6 +196,7 @@ model Building {
   positions        Position[]
   positionAssignments PositionAssignment[]
   events           Event[]
+  elections        Election[]
 
   @@index([deletedAt])
 }
@@ -669,6 +674,7 @@ model Period {
   deletedAt    DateTime?
 
   assignments PositionAssignment[]
+  elections   Election[]
 
   @@index([deletedAt])
 }
@@ -859,4 +865,104 @@ model EventAttachment {
 
   @@index([eventId])
   @@index([deletedAt])
+}
+
+enum ElectionStatus {
+  DRAFT
+  SCHEDULED
+  OPEN
+  CLOSED
+  DONE
+  CANCELLED
+}
+
+model Election {
+  id           String         @id @default(uuid())
+  code         String         @unique
+  title        String
+  description  String?
+  periodId     String?
+  buildingId   String?
+  startAt      DateTime
+  endAt        DateTime
+  status       ElectionStatus @default(DRAFT)
+  allowAbstain Boolean        @default(true)
+  createdById  String
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  deletedAt    DateTime?
+
+  period        Period?                @relation(fields: [periodId], references: [id])
+  building      Building?              @relation(fields: [buildingId], references: [id])
+  createdBy     User                   @relation("ElectionCreator", fields: [createdById], references: [id])
+  eligibleRoles ElectionEligibleRole[]
+  candidates    ElectionCandidate[]
+  votes         ElectionVote[]
+  results       ElectionResult[]
+
+  @@index([status])
+  @@index([deletedAt])
+}
+
+model ElectionEligibleRole {
+  electionId String
+  roleId     String
+
+  election Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  role     Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([electionId, roleId])
+}
+
+model ElectionCandidate {
+  id         String    @id @default(uuid())
+  electionId String
+  userId     String
+  orderNo    Int       @default(0)
+  vision     String?
+  mission    String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+
+  election Election         @relation(fields: [electionId], references: [id])
+  user     User             @relation(fields: [userId], references: [id])
+  votes    ElectionVote[]
+  results  ElectionResult[]
+
+  @@index([electionId])
+  @@index([deletedAt])
+}
+
+model ElectionVote {
+  id          String   @id @default(uuid())
+  electionId  String
+  voterId     String
+  candidateId String?
+  castAt      DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  election  Election           @relation(fields: [electionId], references: [id])
+  voter     User               @relation("ElectionVoter", fields: [voterId], references: [id])
+  candidate ElectionCandidate? @relation(fields: [candidateId], references: [id])
+
+  @@unique([electionId, voterId])
+  @@index([electionId])
+  @@index([candidateId])
+}
+
+model ElectionResult {
+  id          String   @id @default(uuid())
+  electionId  String
+  candidateId String?
+  votes       Int
+  percentage  Float
+  rank        Int
+  recordedAt  DateTime @default(now())
+
+  election  Election           @relation(fields: [electionId], references: [id])
+  candidate ElectionCandidate? @relation(fields: [candidateId], references: [id])
+
+  @@unique([electionId, candidateId])
+  @@index([electionId])
 }

@@ -1,5 +1,6 @@
 import type { PositionAssignment } from "../generated/prisma/client.ts";
 import { prisma } from "../lib/prisma.ts";
+import type { Db } from "../lib/prisma.ts";
 
 export type { PositionAssignment };
 
@@ -13,8 +14,8 @@ export type CreatePositionAssignmentInput = {
 };
 
 export const positionAssignmentRepository = {
-  create(data: CreatePositionAssignmentInput) {
-    return prisma.positionAssignment.create({ data });
+  create(data: CreatePositionAssignmentInput, client: Db = prisma) {
+    return client.positionAssignment.create({ data });
   },
 
   findById(id: string) {
@@ -56,8 +57,8 @@ export const positionAssignmentRepository = {
     });
   },
 
-  end(id: string, endDate: Date) {
-    return prisma.positionAssignment.update({
+  end(id: string, endDate: Date, client: Db = prisma) {
+    return client.positionAssignment.update({
       where: { id },
       data: { isActive: false, endDate, deletedAt: new Date() },
     });
