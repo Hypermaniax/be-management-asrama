@@ -1,5 +1,6 @@
 import type { Gender, User, UserStatus } from "../generated/prisma/client.ts";
 import { prisma } from "../lib/prisma.ts";
+import { publicUserSelect } from "../lib/userSelect.ts";
 
 export type { Gender, User, UserStatus };
 
@@ -15,12 +16,16 @@ export type UserProfileInput = {
 };
 
 export const userRepository = {
+  // Keeps `password` — used only to verify credentials at login.
   findByEmail(email: string) {
     return prisma.user.findFirst({ where: { email, deletedAt: null } });
   },
 
   findById(id: string) {
-    return prisma.user.findFirst({ where: { id, deletedAt: null } });
+    return prisma.user.findFirst({
+      where: { id, deletedAt: null },
+      select: publicUserSelect,
+    });
   },
 
   create(data: {
@@ -38,6 +43,7 @@ export const userRepository = {
         name: data.name ?? null,
         status: data.status ?? "PENDING",
       },
+      select: publicUserSelect,
     });
   },
 
@@ -45,11 +51,16 @@ export const userRepository = {
     return prisma.user.update({
       where: { id },
       data: { emailVerified: true },
+      select: publicUserSelect,
     });
   },
 
   updateProfile(id: string, data: UserProfileInput) {
-    return prisma.user.update({ where: { id }, data });
+    return prisma.user.update({
+      where: { id },
+      data,
+      select: publicUserSelect,
+    });
   },
 
   setStatus(
@@ -62,12 +73,17 @@ export const userRepository = {
       rejectionReason?: string | null;
     },
   ) {
-    return prisma.user.update({ where: { id }, data });
+    return prisma.user.update({
+      where: { id },
+      data,
+      select: publicUserSelect,
+    });
   },
 
   listByBuilding(buildingId: string, status?: UserStatus) {
     return prisma.user.findMany({
       where: { buildingId, deletedAt: null, ...(status ? { status } : {}) },
+      select: publicUserSelect,
       orderBy: { createdAt: "desc" },
     });
   },
@@ -76,6 +92,7 @@ export const userRepository = {
     return prisma.user.update({
       where: { id },
       data: { deletedAt: new Date() },
+      select: publicUserSelect,
     });
   },
 };

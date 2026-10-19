@@ -1,5 +1,6 @@
 import type { AttendanceStatus, EventAttendance } from "../generated/prisma/client.ts";
 import { prisma } from "../lib/prisma.ts";
+import { publicUserSelect } from "../lib/userSelect.ts";
 
 export type { AttendanceStatus, EventAttendance };
 
@@ -36,7 +37,7 @@ export const eventAttendanceRepository = {
   listBySession(sessionId: string) {
     return prisma.eventAttendance.findMany({
       where: { sessionId, deletedAt: null },
-      include: { user: true },
+      include: { user: { select: publicUserSelect } },
       orderBy: { createdAt: "asc" },
     });
   },
@@ -52,7 +53,7 @@ export const eventAttendanceRepository = {
   listByEvent(eventId: string) {
     return prisma.eventAttendance.findMany({
       where: { deletedAt: null, session: { eventId, deletedAt: null } },
-      include: { user: true, session: true },
+      include: { user: { select: publicUserSelect }, session: true },
       orderBy: { createdAt: "asc" },
     });
   },

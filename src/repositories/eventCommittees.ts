@@ -1,5 +1,6 @@
 import type { EventCommittee } from "../generated/prisma/client.ts";
 import { prisma } from "../lib/prisma.ts";
+import { publicUserSelect } from "../lib/userSelect.ts";
 
 export type { EventCommittee };
 
@@ -18,7 +19,7 @@ export const eventCommitteeRepository = {
   findById(id: string) {
     return prisma.eventCommittee.findFirst({
       where: { id, deletedAt: null },
-      include: { user: true, position: true },
+      include: { user: { select: publicUserSelect }, position: true },
     });
   },
 
@@ -31,7 +32,7 @@ export const eventCommitteeRepository = {
   listByEvent(eventId: string) {
     return prisma.eventCommittee.findMany({
       where: { eventId, deletedAt: null },
-      include: { user: true, position: true },
+      include: { user: { select: publicUserSelect }, position: true },
       orderBy: { createdAt: "asc" },
     });
   },

@@ -2,6 +2,7 @@ import type { AuditLog } from "../generated/prisma/client.ts";
 import type { Prisma } from "../generated/prisma/client.ts";
 import type { AuditInput } from "../lib/audit.ts";
 import { prisma } from "../lib/prisma.ts";
+import { publicUserSelect } from "../lib/userSelect.ts";
 
 export type { AuditLog };
 
@@ -40,14 +41,17 @@ export const auditRepository = {
         ...(filters.actorId ? { actorId: filters.actorId } : {}),
         ...(filters.action ? { action: filters.action } : {}),
       },
-      include: { actor: true },
+      include: { actor: { select: publicUserSelect } },
       orderBy: { createdAt: "desc" },
       take: filters.take ?? 100,
     });
   },
 
   findById(id: string) {
-    return prisma.auditLog.findFirst({ where: { id }, include: { actor: true } });
+    return prisma.auditLog.findFirst({
+      where: { id },
+      include: { actor: { select: publicUserSelect } },
+    });
   },
 };
 

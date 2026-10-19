@@ -1,5 +1,6 @@
 import type { ElectionCandidate } from "../generated/prisma/client.ts";
 import { prisma } from "../lib/prisma.ts";
+import { publicUserSelect } from "../lib/userSelect.ts";
 
 export type { ElectionCandidate };
 
@@ -19,7 +20,7 @@ export const electionCandidateRepository = {
   findById(id: string) {
     return prisma.electionCandidate.findFirst({
       where: { id, deletedAt: null },
-      include: { user: true },
+      include: { user: { select: publicUserSelect } },
     });
   },
 
@@ -32,7 +33,7 @@ export const electionCandidateRepository = {
   listByElection(electionId: string) {
     return prisma.electionCandidate.findMany({
       where: { electionId, deletedAt: null },
-      include: { user: true },
+      include: { user: { select: publicUserSelect } },
       orderBy: [{ orderNo: "asc" }, { createdAt: "asc" }],
     });
   },

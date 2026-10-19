@@ -1,6 +1,7 @@
 import type { PositionAssignment } from "../generated/prisma/client.ts";
 import { prisma } from "../lib/prisma.ts";
 import type { Db } from "../lib/prisma.ts";
+import { publicUserSelect } from "../lib/userSelect.ts";
 
 export type { PositionAssignment };
 
@@ -21,7 +22,7 @@ export const positionAssignmentRepository = {
   findById(id: string) {
     return prisma.positionAssignment.findFirst({
       where: { id, deletedAt: null },
-      include: { position: true, user: true },
+      include: { position: true, user: { select: publicUserSelect } },
     });
   },
 
@@ -44,7 +45,7 @@ export const positionAssignmentRepository = {
   listByPeriod(periodId: string) {
     return prisma.positionAssignment.findMany({
       where: { periodId, deletedAt: null },
-      include: { position: true, user: true },
+      include: { position: true, user: { select: publicUserSelect } },
       orderBy: { startDate: "asc" },
     });
   },
@@ -52,7 +53,7 @@ export const positionAssignmentRepository = {
   listByPosition(positionId: string) {
     return prisma.positionAssignment.findMany({
       where: { positionId, deletedAt: null },
-      include: { period: true, user: true },
+      include: { period: true, user: { select: publicUserSelect } },
       orderBy: { startDate: "desc" },
     });
   },

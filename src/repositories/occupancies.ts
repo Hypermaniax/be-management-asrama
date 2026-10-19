@@ -1,5 +1,6 @@
 import type { Occupancy, OccupancyStatus } from "../generated/prisma/client.ts";
 import { prisma } from "../lib/prisma.ts";
+import { publicUserSelect } from "../lib/userSelect.ts";
 
 export type { Occupancy, OccupancyStatus };
 
@@ -61,7 +62,7 @@ export const occupancyRepository = {
         deletedAt: null,
         ...(buildingIds ? { room: { buildingId: { in: buildingIds } } } : {}),
       },
-      include: { room: true, user: true },
+      include: { room: true, user: { select: publicUserSelect } },
       orderBy: { createdAt: "desc" },
     });
   },

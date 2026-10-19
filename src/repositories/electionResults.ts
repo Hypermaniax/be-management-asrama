@@ -1,6 +1,7 @@
 import type { ElectionResult } from "../generated/prisma/client.ts";
 import { prisma } from "../lib/prisma.ts";
 import type { Db } from "../lib/prisma.ts";
+import { publicUserSelect } from "../lib/userSelect.ts";
 
 export type { ElectionResult };
 
@@ -24,7 +25,7 @@ export const electionResultRepository = {
   listByElection(electionId: string) {
     return prisma.electionResult.findMany({
       where: { electionId },
-      include: { candidate: { include: { user: true } } },
+      include: { candidate: { include: { user: { select: publicUserSelect } } } },
       orderBy: { rank: "asc" },
     });
   },

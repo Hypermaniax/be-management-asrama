@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma.ts";
+import { publicUserSelect } from "../lib/userSelect.ts";
 
 export const publicFacilityAssignmentRepository = {
   create(data: {
@@ -44,7 +45,7 @@ export const publicFacilityAssignmentRepository = {
   listByPublicFacility(publicFacilityId: string) {
     return prisma.publicFacilityAssignment.findMany({
       where: { publicFacilityId, deletedAt: null },
-      include: { user: true },
+      include: { user: { select: publicUserSelect } },
       orderBy: { slotLabel: "asc" },
     });
   },
