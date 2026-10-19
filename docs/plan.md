@@ -30,6 +30,8 @@ Backend untuk **Asrama Mahasiswa Kepulauan Riau (Kepri) di Yogyakarta**.
 
 Aturan: implementasi tidak jalan sebelum plan & ERD konsisten.
 
+Referensi endpoint: [`docs/api.md`](./api.md) (daftar semua API + izin + tujuannya).
+
 ---
 
 ## 3. Keputusan desain
