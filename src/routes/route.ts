@@ -21,6 +21,7 @@ import { router as organizationRouter } from "./organization/organization.ts";
 import { router as paymentRouter } from "./payment/payment.ts";
 import { router as publicFacilityRouter } from "./publicFacility/publicFacility.ts";
 import { router as rbacRouter } from "./rbac/rbac.ts";
+import { router as reportRouter } from "./report/report.ts";
 import { router as residentRouter } from "./resident/resident.ts";
 import { router as roomRouter } from "./room/room.ts";
 
@@ -77,3 +78,4 @@ mount("/residents", residentRouter);
 mount("/documents", documentRouter);
 mount("/files", fileRouter);
 mount("/audit-logs", auditRouter);
+mount("/reports", reportRouter);

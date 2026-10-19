@@ -514,26 +514,38 @@ Aturan umum: `asyncHandler` untuk semua handler, error via `AppError`, semua que
 
 ---
 
-## FASE 16 — Laporan
+## FASE 16 — Laporan ✅
 
-- [ ] `src/services/report/service.ts`:
-  - `arrears(buildingId, year, month)` → daftar belum bayar/tunggakan
-  - `cashBalance(buildingId)` → saldo per akun
-  - `incomeVsExpense(buildingId, from, to)`
-  - `eventBudgetRealization(eventId)` → anggaran vs realisasi kegiatan
-- [ ] controller + routes (izin `report.read`, `report.export`)
-- [ ] Verifikasi: angka cocok dengan data
+**Tujuan:** laporan turunan (read-only) dari data transaksional.
+
+> **Keputusan (Fase 16):** laporan bersifat **read-only** (tanpa tabel/kolom baru) — agregasi langsung dari `Invoice`, `LedgerEntry`, `CashAccount`, `Expense`. Cakupan gedung mengikuti `resolveBuildingScope` (SUPER_ADMIN = semua; ADMIN_GEDUNG = gedungnya). Izin `report.READ` untuk lihat & `report.EXPORT` untuk unduh CSV (menu `finance.report`). Ekspor CSV via helper `src/lib/csv.ts`.
+
+- [x] `src/repositories/reports.ts`: `listArrears`, `listCashAccounts`, `sumLedgerByAccount`, `sumLedgerByDirection`, `sumLedgerByCategory`, `findEvent`, `sumEventExpenses`
+- [x] `src/services/report/service.ts` + `service.test.ts`:
+  - `arrears(buildingIds?, {year,month})` → daftar tunggakan (`outstanding = total − paid`) + total
+  - `cashBalances(buildingIds?)` → saldo per akun (`opening + in − out`)
+  - `incomeVsExpense(buildingIds?, {from,to})` → pemasukan vs pengeluaran + net + rincian kategori
+  - `eventBudgetRealization(eventId)` → anggaran vs realisasi (+ `usagePercent`, `overBudget`, 404 bila event tidak ada)
+- [x] `src/lib/csv.ts` + `csv.test.ts` (escaping koma/kuote/newline)
+- [x] `src/validations/report.ts`, `src/controller/report.ts`, `src/routes/report/report.ts` (izin `report.READ`/`report.EXPORT`), mount `/api/reports`, wiring `reportService`
+- [x] Endpoint: `GET /reports/arrears`, `/arrears/export`, `/cash-balances`, `/income-vs-expense`, `/income-vs-expense/export`, `/events/:eventId/budget`
+- [x] Verifikasi: `npm test` **169/169** ✅; smoke `curl` **28/28** ✅ (angka cocok: net = income − expense, saldo = opening + in − out, realisasi anggaran; ekspor CSV; warga 403)
+
+> **Catatan:** status `OVERDUE` masih belum di-transisi otomatis (lihat plan §10 #3) — laporan tunggakan memakai `ISSUED`/`PARTIAL`/`OVERDUE`.
 
 ---
 
-## FASE 17 — Integrasi & Test menyeluruh
+## FASE 17 — Integrasi & Test menyeluruh ✅
 
-- [ ] Test alur end-to-end: daftar → OTP → approve → penempatan → assign KM → tagihan → bayar → kas → kegiatan (absensi + anggaran) → pemilihan → laporan
-- [ ] Test RBAC: permission & scope gedung
-- [ ] Test organisasi: jabatan → role → akses
-- [ ] Test pemilihan: 1 warga 1 suara + finalize ke jabatan KETUA
-- [ ] Update `docs/erd.md` bila ada perubahan skema
-- [ ] Verifikasi: `npm run typecheck && npm test`
+> **Keputusan (Fase 17):** saat `approve`, penghuni otomatis diberi role **`PENGHUNI`** (selain `CALON_PENGHUNI` yang tetap untuk akses dokumen). Tanpa ini, penghuni baru tidak bisa melihat tagihannya & tidak memenuhi syarat pemilih (`PENGHUNI` + `Occupancy` aktif). Akses tetap bersumber dari `UserRole` (penugasan jabatan = struktur saja, sesuai Fase 12).
+
+- [x] E2E: daftar → OTP (stateless, dihitung dari secret) → approve → penempatan kamar → assign KM → tagihan → bayar → kas → kegiatan (sesi + absensi + anggaran) → pemilihan → laporan
+- [x] RBAC: permission (warga 403) & scope gedung (ADMIN_GEDUNG in-scope 201, out-of-scope 403)
+- [x] Organisasi: jabatan → role (posisi menyimpan `roleId`) → struktur menampilkan pemegang; akses via `UserRole`
+- [x] Pemilihan: 1 warga 1 suara (vote kedua 409) + `close` → `result` (rank 1) → `finalize` ke jabatan `KETUA`
+- [x] `docs/erd.md`: tidak ada perubahan skema (laporan read-only; audit `path` sudah tercatat)
+- [x] Perbaikan integrasi: `residentService.approve` memberi role `PENGHUNI` (+ test)
+- [x] Verifikasi: `npm run typecheck` ✅ · `npm test` **170/170** ✅ · smoke E2E `/tmp/opencode/smoke-e2e.mjs` **51/51** ✅
 
 ---
 

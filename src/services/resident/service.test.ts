@@ -4,9 +4,11 @@ import { createResidentService } from "./service.ts";
 
 type Fakes = {
   findById?: (id: string) => Promise<unknown>;
+  residentRole?: unknown;
 };
 
 const makeService = (fakes: Fakes = {}) => {
+  const assignedRoles: { userId: string; roleId: string }[] = [];
   const deps = {
     users: {
       findById: fakes.findById ?? (async () => ({ id: "u1", status: "PENDING", buildingId: null })),
@@ -14,12 +16,22 @@ const makeService = (fakes: Fakes = {}) => {
       setStatus: async (id: string, data: Record<string, unknown>) => ({ id, ...data }),
       listByBuilding: async () => [],
     },
+    roles: {
+      findByCode: async () =>
+        fakes.residentRole === undefined ? { id: "r-penghuni", code: "PENGHUNI" } : fakes.residentRole,
+    },
+    userRoles: {
+      assign: async (data: { userId: string; roleId: string }) => {
+        assignedRoles.push(data);
+        return { id: "ur1", ...data };
+      },
+    },
   };
-  return createResidentService(deps as never);
+  return { service: createResidentService(deps as never), assignedRoles };
 };
 
 test("getResident rejects a missing user with 404", async () => {
-  const service = makeService({ findById: async () => null });
+  const { service } = makeService({ findById: async () => null });
 
   await assert.rejects(
     () => service.getResident("missing"),
@@ -27,17 +39,27 @@ test("getResident rejects a missing user with 404", async () => {
   );
 });
 
-test("approve transitions PENDING to ACTIVE", async () => {
-  const service = makeService();
+test("approve transitions PENDING to ACTIVE and grants the PENGHUNI role", async () => {
+  const { service, assignedRoles } = makeService();
 
   const result = await service.approve("u1", "admin1", "b1");
 
   assert.equal(result.status, "ACTIVE");
   assert.equal(result.reviewedById, "admin1");
+  assert.deepEqual(assignedRoles, [{ userId: "u1", roleId: "r-penghuni" }]);
+});
+
+test("approve still succeeds when the PENGHUNI role is missing", async () => {
+  const { service, assignedRoles } = makeService({ residentRole: null });
+
+  const result = await service.approve("u1", "admin1");
+
+  assert.equal(result.status, "ACTIVE");
+  assert.deepEqual(assignedRoles, []);
 });
 
 test("approve rejects a non-PENDING user with 400", async () => {
-  const service = makeService({
+  const { service } = makeService({
     findById: async () => ({ id: "u1", status: "ACTIVE", buildingId: "b1" }),
   });
 
@@ -48,7 +70,7 @@ test("approve rejects a non-PENDING user with 400", async () => {
 });
 
 test("reject rejects a non-PENDING user with 400", async () => {
-  const service = makeService({
+  const { service } = makeService({
     findById: async () => ({ id: "u1", status: "ACTIVE", buildingId: "b1" }),
   });
 
@@ -59,7 +81,7 @@ test("reject rejects a non-PENDING user with 400", async () => {
 });
 
 test("checkout rejects a non-ACTIVE user with 400", async () => {
-  const service = makeService();
+  const { service } = makeService();
 
   await assert.rejects(
     () => service.checkout("u1"),
@@ -68,7 +90,7 @@ test("checkout rejects a non-ACTIVE user with 400", async () => {
 });
 
 test("checkout transitions ACTIVE to CHECKOUT", async () => {
-  const service = makeService({
+  const { service } = makeService({
     findById: async () => ({ id: "u1", status: "ACTIVE", buildingId: "b1" }),
   });
 

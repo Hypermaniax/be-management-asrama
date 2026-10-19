@@ -1,4 +1,6 @@
 import { AppError } from "../../lib/errors.ts";
+import type { RoleRepository } from "../../repositories/roles.ts";
+import type { UserRoleRepository } from "../../repositories/userRoles.ts";
 import type {
   UserProfileInput,
   UserRepository,
@@ -7,9 +9,13 @@ import type {
 
 type ResidentDeps = {
   users: UserRepository;
+  roles: RoleRepository;
+  userRoles: UserRoleRepository;
 };
 
-export const createResidentService = ({ users }: ResidentDeps) => {
+const RESIDENT_ROLE = "PENGHUNI";
+
+export const createResidentService = ({ users, roles, userRoles }: ResidentDeps) => {
   const getResident = async (userId: string) => {
     const user = await users.findById(userId);
     if (!user) {
@@ -40,12 +46,18 @@ export const createResidentService = ({ users }: ResidentDeps) => {
       if (buildingId !== undefined) {
         await users.updateProfile(userId, { buildingId });
       }
-      return users.setStatus(userId, {
+      const approved = await users.setStatus(userId, {
         status: "ACTIVE",
         reviewedById: reviewerId,
         reviewedAt: new Date(),
         rejectionReason: null,
       });
+      // Becoming a resident grants the PENGHUNI role (CALON_PENGHUNI stays for docs access).
+      const role = await roles.findByCode(RESIDENT_ROLE);
+      if (role) {
+        await userRoles.assign({ userId, roleId: role.id });
+      }
+      return approved;
     },
 
     async reject(userId: string, reviewerId: string, reason: string) {

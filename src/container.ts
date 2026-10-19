@@ -30,6 +30,7 @@ import { occupancyRepository } from "./repositories/occupancies.ts";
 import { paymentRepository } from "./repositories/payments.ts";
 import { periodRepository } from "./repositories/periods.ts";
 import { permissionRepository } from "./repositories/permissions.ts";
+import { reportRepository } from "./repositories/reports.ts";
 import { positionAssignmentRepository } from "./repositories/positionAssignments.ts";
 import { positionRepository } from "./repositories/positions.ts";
 import { publicFacilityRepository } from "./repositories/publicFacilities.ts";
@@ -56,6 +57,7 @@ import { createOrganizationService } from "./services/organization/service.ts";
 import { createOtpService } from "./services/otp/service.ts";
 import { createPublicFacilityService } from "./services/publicFacility/service.ts";
 import { createRbacService } from "./services/rbac/service.ts";
+import { createReportService } from "./services/report/service.ts";
 import { createResidentService } from "./services/resident/service.ts";
 import { createRoomService } from "./services/room/service.ts";
 
@@ -123,6 +125,8 @@ export const publicFacilityService = createPublicFacilityService({
 
 export const residentService = createResidentService({
   users: userRepository,
+  roles: roleRepository,
+  userRoles: userRoleRepository,
 });
 
 export const occupancyService = createOccupancyService({
@@ -194,6 +198,12 @@ export const organizationService = createOrganizationService({
   buildings: buildingRepository,
   users: userRepository,
   transaction: runTransaction,
+});
+
+export const reportService = createReportService({
+  reports: reportRepository,
+  categories: categoryRepository,
+  buildings: buildingRepository,
 });
 
 export const documentService = createDocumentService({

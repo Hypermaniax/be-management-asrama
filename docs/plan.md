@@ -441,8 +441,8 @@ Detail: [`phases.md`](./phases.md).
 | 13   | **Kegiatan (Event, sesi, panitia, absensi, anggaran, LPJ)**     | ✅     |
 | 14   | **Pemilihan (Election, EligibleRole, Candidate, Vote, Result)** | ✅     |
 | 15   | Audit                                                           | ✅     |
-| 16   | Laporan                                                         | ⬜     |
-| 17   | Integrasi & test menyeluruh                                     | ⬜     |
+| 16   | Laporan                                                         | ✅     |
+| 17   | Integrasi & test menyeluruh                                     | ✅     |
 | 18   | Email Queue + OTP Stateless                                     | ✅     |
 
 ---
@@ -499,6 +499,8 @@ Detail: [`phases.md`](./phases.md).
 31. **Pemilihan** (Fase 14): pemilih sah = **role eligible** (`ElectionEligibleRole`, default `PENGHUNI`) **dan** `Occupancy` aktif; kandidat juga warga aktif. `closeElection` menghitung & menyimpan `ElectionResult` (votes/%; rank; abstain ikut) dalam **satu transaksi**; hasil hanya terbaca saat `CLOSED`/`DONE`. `finalize` **wajib `Election.periodId`**, menutup penugasan KETUA aktif periode itu lalu membuat penugasan baru, status → `DONE`. Partial unik: `ElectionCandidate [electionId, userId] WHERE deletedAt IS NULL`, **1 `OPEN` per scope** `COALESCE(buildingId,'') WHERE status='OPEN' AND deletedAt IS NULL`. `ElectionVote`/`ElectionResult` **immutable**. `ADMIN_GEDUNG.election` = CRUD dalam scope gedung.
 32. **Audit** (Fase 15): `AuditLog` **immutable** (tanpa `deletedAt`). Helper `auditRequest(req, meta)` mencatat `actorId` (`req.user`) + `ip` (`req.ip`) & **tidak pernah melempar** (audit gagal ≠ operasi gagal). Field sensitif (`password`/`token`/`secret`) di-`redact` di service. Dipanggil dari controller RBAC & keuangan (cashAccount, category, expense, ledger income/reversal, payment). Baca via `GET /api/audit-logs` (izin `audit.READ`, menu `system.audit`).
 33. **Audit otomatis** (Fase 15.1): middleware `auditMutations` mencatat **semua mutasi** (`POST/PUT/PATCH/DELETE` sukses) oleh `SUPER_ADMIN`/`ADMIN_GEDUNG` — `entity`/`action` dari **marker permission** route, `entityId` dari `data.id`, `path` = `originalUrl`, `after` = body respons. `auditRequest` menandai `req.__audited` agar log manual (kaya `before`/`after`) tidak dobel. Kolom `AuditLog.path` ditambahkan. GET & aktor non-admin tidak dicatat.
+34. **Laporan** (Fase 16): laporan **read-only** (tanpa skema baru) — agregasi dari `Invoice`/`LedgerEntry`/`CashAccount`/`Expense`. `arrears` (tunggakan: `outstanding = total − paid`, status `ISSUED`/`PARTIAL`/`OVERDUE`), `cashBalances` (`opening + in − out` per akun), `incomeVsExpense` (net + rincian kategori, filter `from`/`to`), `eventBudgetRealization` (anggaran vs realisasi + `usagePercent`/`overBudget`). Cakupan gedung via `resolveBuildingScope`. Izin `report.READ`/`report.EXPORT` (menu `finance.report`); ekspor CSV via `src/lib/csv.ts`. Endpoint di `/api/reports`.
+35. **Lifecycle penghuni** (Fase 17): `approve` (PENDING→ACTIVE) otomatis memberi role **`PENGHUNI`** ke user (idempoten, `buildingId` scope null seperti demo warga; `CALON_PENGHUNI` tetap dipertahankan untuk akses dokumen). Menutup celah: penghuni baru tidak bisa membaca tagihan sendiri & tidak memenuhi syarat pemilih. Akses tetap dari `UserRole` (jabatan = struktur saja, Fase 12).
 
 ---
 
