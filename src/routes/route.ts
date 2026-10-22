@@ -16,9 +16,11 @@ import { router as fileRouter } from "./file/file.ts";
 import { router as feeRuleRouter } from "./feeRule/feeRule.ts";
 import { router as invoiceRouter } from "./invoice/invoice.ts";
 import { router as ledgerRouter } from "./ledger/ledger.ts";
+import { router as meRouter } from "./me/me.ts";
 import { router as occupancyRouter } from "./occupancy/occupancy.ts";
 import { router as organizationRouter } from "./organization/organization.ts";
 import { router as paymentRouter } from "./payment/payment.ts";
+import { router as paymentSubmissionRouter } from "./paymentSubmission/paymentSubmission.ts";
 import { router as publicFacilityRouter } from "./publicFacility/publicFacility.ts";
 import { router as rbacRouter } from "./rbac/rbac.ts";
 import { router as reportRouter } from "./report/report.ts";
@@ -33,6 +35,8 @@ export const PUBLIC_PATHS = new Set([
   "/auth/login",
   "/auth/request-otp",
   "/auth/verify-otp",
+  "/auth/refresh",
+  "/auth/logout",
 ]);
 
 export type Mount = { prefix: string; router: express.Router };
@@ -67,6 +71,8 @@ mount("/public-facilities", publicFacilityRouter);
 mount("/occupancies", occupancyRouter);
 mount("/invoices", invoiceRouter);
 mount("/payments", paymentRouter);
+mount("/payment-submissions", paymentSubmissionRouter);
+mount("/me", meRouter);
 mount("/cash-accounts", cashAccountRouter);
 mount("/categories", categoryRouter);
 mount("/expenses", expenseRouter);

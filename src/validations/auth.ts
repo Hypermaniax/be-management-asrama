@@ -18,3 +18,7 @@ export const otpSchema = z.object({
 export const requestOtpSchema = z.object({
   email: z.email(),
 });
+
+export const refreshSchema = z.object({
+  refreshToken: z.string().min(16),
+});

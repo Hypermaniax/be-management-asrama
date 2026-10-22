@@ -10,6 +10,13 @@ export const roleMenuRepository = {
       }),
     ]);
   },
+
+  listForRole(roleId: string) {
+    return prisma.roleMenu.findMany({
+      where: { roleId },
+      select: { menuId: true },
+    });
+  },
 };
 
 export type RoleMenuRepository = typeof roleMenuRepository;

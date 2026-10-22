@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { billingService } from "../container.ts";
 import { AppError } from "../lib/errors.ts";
+import { permissionCode } from "../lib/permission.ts";
 import { auditRequest } from "../middleware/audit.ts";
 import type { ScopedRequest } from "../middleware/buildingScope.ts";
 import type { AccessRequest } from "../middleware/permission.ts";
@@ -49,6 +50,23 @@ export const paymentController = {
   async get(req: Request, res: Response) {
     const id = paramId(req.params.id);
     const payment = await billingService.getPayment(id);
+    const { access, user, scope } = req as ScopedRequest;
+    if (!user || !access) {
+      throw new AppError("Unauthorized", 401);
+    }
+    if (payment.userId !== user.id) {
+      const buildingId = payment.user?.buildingId;
+      const inScope =
+        !scope ||
+        "all" in scope ||
+        (buildingId !== null && buildingId !== undefined && scope.buildingIds.includes(buildingId));
+      const canReview =
+        access.isSuperAdmin ||
+        (access.permissions.has(permissionCode("payment", "APPROVE")) && inScope);
+      if (!canReview) {
+        throw new AppError("Forbidden", 403);
+      }
+    }
     res.json({ status: "ok", data: payment });
   },
 };

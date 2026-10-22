@@ -47,7 +47,10 @@ export const paymentRepository = {
   findById(id: string) {
     return prisma.payment.findFirst({
       where: { id, deletedAt: null },
-      include: { allocations: true },
+      include: {
+        allocations: true,
+        user: { select: { id: true, buildingId: true } },
+      },
     });
   },
 

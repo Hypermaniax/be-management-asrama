@@ -32,7 +32,8 @@
     "start": "tsx app.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "db:seed:testing": "tsx prisma/seed-testing.ts"
   },
   "type": "module"
 }

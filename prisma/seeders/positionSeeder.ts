@@ -1,4 +1,5 @@
 import { prisma } from "../../src/lib/prisma.ts";
+import { logSeeded, requireId, syncSoftRecord } from "./utils.ts";
 
 export type PositionSeed = {
   code: string;
@@ -9,15 +10,27 @@ export type PositionSeed = {
 };
 
 export const POSITIONS: PositionSeed[] = [
-  { code: "KETUA", name: "Ketua", level: 1 },
+  { code: "KETUA", name: "Ketua", level: 1, roleCode: "PENGURUS" },
   { code: "WAKIL_KETUA", name: "Wakil Ketua", level: 2, roleCode: "PENGURUS" },
   { code: "SEKRETARIS", name: "Sekretaris", level: 2, roleCode: "PENGURUS" },
   { code: "BENDAHARA", name: "Bendahara", level: 2, roleCode: "BENDAHARA" },
   { code: "KOOR_ACARA", name: "Koordinator Acara/Humas", level: 3, roleCode: "PENGURUS" },
   { code: "KOOR_KEBERSIHAN", name: "Koordinator Kebersihan", level: 3, roleCode: "PENGURUS" },
   { code: "KOOR_PERLENGKAPAN", name: "Koordinator Perlengkapan", level: 3, roleCode: "PENGURUS" },
-  { code: "KOOR_GEDUNG", name: "Koordinator Gedung", level: 3, buildingCode: "G1", roleCode: "PENGURUS" },
-  { code: "KOOR_GEDUNG", name: "Koordinator Gedung", level: 3, buildingCode: "G2", roleCode: "PENGURUS" },
+  {
+    code: "KOOR_GEDUNG",
+    name: "Koordinator Gedung",
+    level: 3,
+    buildingCode: "G1",
+    roleCode: "PENGURUS",
+  },
+  {
+    code: "KOOR_GEDUNG",
+    name: "Koordinator Gedung",
+    level: 3,
+    buildingCode: "G2",
+    roleCode: "PENGURUS",
+  },
 ];
 
 export async function seedPositions(
@@ -28,13 +41,11 @@ export async function seedPositions(
 
   for (const position of POSITIONS) {
     const buildingId = position.buildingCode
-      ? (buildingIds.get(position.buildingCode) ?? null)
+      ? requireId(buildingIds, position.buildingCode, "building")
       : null;
-    const roleId = position.roleCode ? (roleIds.get(position.roleCode) ?? null) : null;
-
-    const existing = await prisma.position.findFirst({
-      where: { code: position.code, buildingId, deletedAt: null },
-    });
+    const roleId = position.roleCode
+      ? requireId(roleIds, position.roleCode, "role")
+      : null;
 
     const data = {
       name: position.name,
@@ -42,16 +53,25 @@ export async function seedPositions(
       buildingId,
       roleId,
       isActive: true,
+      deletedAt: null,
     };
 
-    if (existing) {
-      await prisma.position.update({ where: { id: existing.id }, data });
-    } else {
-      await prisma.position.create({ data: { code: position.code, ...data } });
-    }
+    await syncSoftRecord({
+      findActive: () =>
+        prisma.position.findFirst({
+          where: { code: position.code, buildingId, deletedAt: null },
+        }),
+      findAny: () =>
+        prisma.position.findFirst({
+          where: { code: position.code, buildingId },
+          orderBy: { createdAt: "asc" },
+        }),
+      create: () => prisma.position.create({ data: { code: position.code, ...data } }),
+      update: (id) => prisma.position.update({ where: { id }, data }),
+    });
     count++;
   }
 
-  console.log(`seeded ${count} positions`);
+  logSeeded("positions", count);
   return count;
 }

@@ -1,5 +1,6 @@
-import { prisma } from "../../src/lib/prisma.ts";
 import type { CategoryKind } from "../../src/generated/prisma/client.ts";
+import { prisma } from "../../src/lib/prisma.ts";
+import { logSeeded, syncSoftRecord } from "./utils.ts";
 
 export type CategorySeed = { name: string; kind: CategoryKind };
 
@@ -21,24 +22,28 @@ export async function seedCategories(buildingIds: Map<string, string>) {
 
   for (const buildingId of buildingIds.values()) {
     for (const category of CATEGORIES) {
-      const existing = await prisma.category.findFirst({
-        where: { buildingId, name: category.name, deletedAt: null },
-      });
+      const data = { kind: category.kind, deletedAt: null };
 
-      if (existing) {
-        await prisma.category.update({
-          where: { id: existing.id },
-          data: { kind: category.kind },
-        });
-      } else {
-        await prisma.category.create({
-          data: { buildingId, name: category.name, kind: category.kind },
-        });
-      }
+      await syncSoftRecord({
+        findActive: () =>
+          prisma.category.findFirst({
+            where: { buildingId, name: category.name, deletedAt: null },
+          }),
+        findAny: () =>
+          prisma.category.findFirst({
+            where: { buildingId, name: category.name },
+            orderBy: { createdAt: "asc" },
+          }),
+        create: () =>
+          prisma.category.create({
+            data: { buildingId, name: category.name, ...data },
+          }),
+        update: (id) => prisma.category.update({ where: { id }, data }),
+      });
       count++;
     }
   }
 
-  console.log(`seeded ${count} categories`);
+  logSeeded("categories", count);
   return count;
 }

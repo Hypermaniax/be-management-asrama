@@ -1,4 +1,5 @@
 import { prisma } from "../../src/lib/prisma.ts";
+import { logSeeded } from "./utils.ts";
 
 export type MenuSeed = {
   code: string;
@@ -162,9 +163,10 @@ export const MENUS: MenuSeed[] = [
     children: [
       { code: "me.profile", name: "Profil Saya", path: "/me/profile", sortOrder: 1 },
       { code: "me.invoice", name: "Tagihan Saya", path: "/me/invoices", sortOrder: 2 },
-      { code: "me.document", name: "Dokumen Saya", path: "/me/documents", sortOrder: 3 },
-      { code: "me.attendance", name: "Absensi Saya", path: "/me/attendance", sortOrder: 4 },
-      { code: "me.election", name: "Pemilihan Saya", path: "/me/elections", sortOrder: 5 },
+      { code: "me.payment", name: "Pembayaran Saya", path: "/me/payments", sortOrder: 3 },
+      { code: "me.document", name: "Dokumen Saya", path: "/me/documents", sortOrder: 4 },
+      { code: "me.attendance", name: "Absensi Saya", path: "/me/attendance", sortOrder: 5 },
+      { code: "me.election", name: "Pemilihan Saya", path: "/me/elections", sortOrder: 6 },
     ],
   },
 ];
@@ -187,6 +189,7 @@ export async function seedMenus() {
         icon: root.icon ?? null,
         sortOrder: root.sortOrder,
         parentId: null,
+        isActive: true,
       },
       update: {
         name: root.name,
@@ -194,6 +197,8 @@ export async function seedMenus() {
         icon: root.icon ?? null,
         sortOrder: root.sortOrder,
         parentId: null,
+        isActive: true,
+        deletedAt: null,
       },
     });
     idByCode.set(root.code, parent.id);
@@ -208,6 +213,7 @@ export async function seedMenus() {
           icon: child.icon ?? null,
           sortOrder: child.sortOrder,
           parentId: parent.id,
+          isActive: true,
         },
         update: {
           name: child.name,
@@ -215,12 +221,14 @@ export async function seedMenus() {
           icon: child.icon ?? null,
           sortOrder: child.sortOrder,
           parentId: parent.id,
+          isActive: true,
+          deletedAt: null,
         },
       });
       idByCode.set(child.code, created.id);
     }
   }
 
-  console.log(`seeded ${idByCode.size} menus`);
+  logSeeded("menus", idByCode.size);
   return idByCode;
 }

@@ -10,6 +10,13 @@ export const rolePermissionRepository = {
       }),
     ]);
   },
+
+  listForRole(roleId: string) {
+    return prisma.rolePermission.findMany({
+      where: { roleId },
+      select: { permissionId: true },
+    });
+  },
 };
 
 export type RolePermissionRepository = typeof rolePermissionRepository;

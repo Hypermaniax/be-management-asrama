@@ -25,3 +25,14 @@ export const assignRoleSchema = z.object({
   roleId: z.string().min(1),
   buildingId: z.string().min(1).nullable().optional(),
 });
+
+export const setPermissionOverridesSchema = z.object({
+  overrides: z
+    .array(
+      z.object({
+        permissionId: z.string().min(1),
+        effect: z.enum(["GRANT", "DENY"]),
+      }),
+    )
+    .max(200),
+});

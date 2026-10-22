@@ -1,5 +1,6 @@
 import { hashPassword } from "../../src/lib/password.ts";
 import { prisma } from "../../src/lib/prisma.ts";
+import { ensureUserRole, logSeeded, requireId } from "./utils.ts";
 
 const DEV_EMAIL = "admin@kepri.local";
 const DEV_PASSWORD = "admin12345";
@@ -15,7 +16,7 @@ export async function seedUsers({ roleIds }: SeedUsersInput) {
   const password = process.env.SEED_ADMIN_PASSWORD ?? (isProduction ? undefined : DEV_PASSWORD);
 
   if (!email || !password) {
-    console.log("skipped userSeeder: set SEED_ADMIN_EMAIL & SEED_ADMIN_PASSWORD");
+    console.log("  – bootstrap admin: set SEED_ADMIN_EMAIL & SEED_ADMIN_PASSWORD");
     return;
   }
 
@@ -29,18 +30,14 @@ export async function seedUsers({ roleIds }: SeedUsersInput) {
       emailVerified: true,
       status: "ACTIVE",
     },
-    update: { password: hashed, emailVerified: true, status: "ACTIVE" },
+    update: {
+      password: hashed,
+      emailVerified: true,
+      status: "ACTIVE",
+      deletedAt: null,
+    },
   });
 
-  const roleId = roleIds.get("SUPER_ADMIN");
-  if (roleId) {
-    const existing = await prisma.userRole.findFirst({
-      where: { userId: user.id, roleId, deletedAt: null },
-    });
-    if (!existing) {
-      await prisma.userRole.create({ data: { userId: user.id, roleId } });
-    }
-  }
-
-  console.log(`seeded user ${email} (SUPER_ADMIN)`);
+  await ensureUserRole(user.id, requireId(roleIds, "SUPER_ADMIN", "role"), null);
+  logSeeded(`bootstrap admin (${email})`, 1);
 }

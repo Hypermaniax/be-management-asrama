@@ -1,4 +1,5 @@
 import { prisma } from "../../src/lib/prisma.ts";
+import { logSeeded, requireId, syncSoftRecord } from "./utils.ts";
 
 export type FeeRuleSeed = {
   buildingCode: string;
@@ -26,28 +27,36 @@ export async function seedFeeRules(buildingIds: Map<string, string>) {
   let count = 0;
 
   for (const rule of FEE_RULES) {
-    const buildingId = buildingIds.get(rule.buildingCode);
-    if (!buildingId) continue;
-
-    const existing = await prisma.feeRule.findFirst({
-      where: { buildingId, effectiveFrom: rule.effectiveFrom, deletedAt: null },
-    });
-
+    const buildingId = requireId(buildingIds, rule.buildingCode, "building");
     const data = {
       dueDayOfMonth: rule.dueDayOfMonth,
       defaultMonthlyRate: rule.defaultMonthlyRate,
+      deletedAt: null,
     };
 
-    if (existing) {
-      await prisma.feeRule.update({ where: { id: existing.id }, data });
-    } else {
-      await prisma.feeRule.create({
-        data: { buildingId, effectiveFrom: rule.effectiveFrom, ...data },
-      });
-    }
+    await syncSoftRecord({
+      findActive: () =>
+        prisma.feeRule.findFirst({
+          where: {
+            buildingId,
+            effectiveFrom: rule.effectiveFrom,
+            deletedAt: null,
+          },
+        }),
+      findAny: () =>
+        prisma.feeRule.findFirst({
+          where: { buildingId, effectiveFrom: rule.effectiveFrom },
+          orderBy: { createdAt: "asc" },
+        }),
+      create: () =>
+        prisma.feeRule.create({
+          data: { buildingId, effectiveFrom: rule.effectiveFrom, ...data },
+        }),
+      update: (id) => prisma.feeRule.update({ where: { id }, data }),
+    });
     count++;
   }
 
-  console.log(`seeded ${count} fee rules`);
+  logSeeded("fee rules", count);
   return count;
 }

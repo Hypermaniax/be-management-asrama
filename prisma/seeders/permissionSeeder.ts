@@ -1,6 +1,7 @@
 import type { PermissionAction } from "../../src/generated/prisma/client.ts";
 import { permissionCode } from "../../src/lib/permission.ts";
 import { prisma } from "../../src/lib/prisma.ts";
+import { logSeeded } from "./utils.ts";
 
 export const RESOURCES = [
   "user",
@@ -50,6 +51,6 @@ export async function seedPermissions() {
     }
   }
 
-  console.log(`seeded ${idByCode.size} permissions`);
+  logSeeded("permissions", idByCode.size);
   return idByCode;
 }

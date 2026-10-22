@@ -1,4 +1,5 @@
 import { prisma } from "../../src/lib/prisma.ts";
+import { MB, logSeeded, requireId, syncSoftRecord } from "./utils.ts";
 
 export type DocumentTypeSeed = {
   buildingCode: string;
@@ -10,7 +11,7 @@ export type DocumentTypeSeed = {
   sortOrder: number;
 };
 
-const MB = 1024 * 1024;
+const MIME_TYPES = ["application/pdf", "image/jpeg", "image/png"];
 
 export const DOCUMENT_TYPES: DocumentTypeSeed[] = [
   {
@@ -18,7 +19,7 @@ export const DOCUMENT_TYPES: DocumentTypeSeed[] = [
     code: "KTP",
     name: "KTP",
     isRequiredByDefault: true,
-    allowedMimeTypes: ["application/pdf", "image/jpeg", "image/png"],
+    allowedMimeTypes: MIME_TYPES,
     maxSizeBytes: 2 * MB,
     sortOrder: 1,
   },
@@ -27,7 +28,7 @@ export const DOCUMENT_TYPES: DocumentTypeSeed[] = [
     code: "KTM",
     name: "Kartu Tanda Mahasiswa",
     isRequiredByDefault: true,
-    allowedMimeTypes: ["application/pdf", "image/jpeg", "image/png"],
+    allowedMimeTypes: MIME_TYPES,
     maxSizeBytes: 2 * MB,
     sortOrder: 2,
   },
@@ -36,7 +37,7 @@ export const DOCUMENT_TYPES: DocumentTypeSeed[] = [
     code: "KTP",
     name: "KTP",
     isRequiredByDefault: true,
-    allowedMimeTypes: ["application/pdf", "image/jpeg", "image/png"],
+    allowedMimeTypes: MIME_TYPES,
     maxSizeBytes: 2 * MB,
     sortOrder: 1,
   },
@@ -45,7 +46,7 @@ export const DOCUMENT_TYPES: DocumentTypeSeed[] = [
     code: "KTM",
     name: "Kartu Tanda Mahasiswa",
     isRequiredByDefault: true,
-    allowedMimeTypes: ["application/pdf", "image/jpeg", "image/png"],
+    allowedMimeTypes: MIME_TYPES,
     maxSizeBytes: 2 * MB,
     sortOrder: 2,
   },
@@ -55,29 +56,34 @@ export async function seedDocumentTypes(buildingIds: Map<string, string>) {
   let count = 0;
 
   for (const type of DOCUMENT_TYPES) {
-    const buildingId = buildingIds.get(type.buildingCode);
-    if (!buildingId) continue;
-
-    const existing = await prisma.documentType.findFirst({
-      where: { buildingId, code: type.code, deletedAt: null },
-    });
-
+    const buildingId = requireId(buildingIds, type.buildingCode, "building");
     const data = {
       name: type.name,
       isRequiredByDefault: type.isRequiredByDefault,
+      isActive: true,
       allowedMimeTypes: type.allowedMimeTypes,
       maxSizeBytes: type.maxSizeBytes,
       sortOrder: type.sortOrder,
+      deletedAt: null,
     };
 
-    if (existing) {
-      await prisma.documentType.update({ where: { id: existing.id }, data });
-    } else {
-      await prisma.documentType.create({ data: { buildingId, code: type.code, ...data } });
-    }
+    await syncSoftRecord({
+      findActive: () =>
+        prisma.documentType.findFirst({
+          where: { buildingId, code: type.code, deletedAt: null },
+        }),
+      findAny: () =>
+        prisma.documentType.findFirst({
+          where: { buildingId, code: type.code },
+          orderBy: { createdAt: "asc" },
+        }),
+      create: () =>
+        prisma.documentType.create({ data: { buildingId, code: type.code, ...data } }),
+      update: (id) => prisma.documentType.update({ where: { id }, data }),
+    });
     count++;
   }
 
-  console.log(`seeded ${count} document types`);
+  logSeeded("document types", count);
   return count;
 }

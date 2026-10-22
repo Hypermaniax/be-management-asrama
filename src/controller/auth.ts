@@ -4,6 +4,7 @@ import { authService } from "../container.ts";
 import type { AuthedRequest } from "../middleware/auth.ts";
 import {
   otpSchema,
+  refreshSchema,
   requestOtpSchema,
   signInSchema,
   signUpSchema,
@@ -41,5 +42,17 @@ export const authController = {
     const { email, otp } = otpSchema.parse(req.body);
     const data = await authService.verifyOTP(email, otp);
     res.json({ status: "otp verified", data });
+  },
+
+  async refresh(req: Request, res: Response) {
+    const { refreshToken } = refreshSchema.parse(req.body);
+    const data = await authService.refreshSession(refreshToken);
+    res.json({ status: "token refreshed", data });
+  },
+
+  async logout(req: Request, res: Response) {
+    const { refreshToken } = refreshSchema.parse(req.body);
+    const data = await authService.logout(refreshToken);
+    res.json({ status: "logout okay", data });
   },
 };

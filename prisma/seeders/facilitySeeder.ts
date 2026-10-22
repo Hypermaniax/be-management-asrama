@@ -4,6 +4,7 @@ import type {
   FacilityUsage,
 } from "../../src/generated/prisma/client.ts";
 import { prisma } from "../../src/lib/prisma.ts";
+import { logSeeded } from "./utils.ts";
 
 export type FacilitySeed = {
   code: string;
@@ -27,19 +28,14 @@ export async function seedFacilities() {
   const idByCode = new Map<string, string>();
 
   for (const facility of FACILITIES) {
-    const created = await prisma.facility.upsert({
+    const row = await prisma.facility.upsert({
       where: { code: facility.code },
-      create: facility,
-      update: {
-        name: facility.name,
-        scope: facility.scope,
-        usageMode: facility.usageMode,
-        category: facility.category,
-      },
+      create: { ...facility, isActive: true },
+      update: { ...facility, isActive: true, deletedAt: null },
     });
-    idByCode.set(facility.code, created.id);
+    idByCode.set(facility.code, row.id);
   }
 
-  console.log(`seeded ${idByCode.size} facilities`);
+  logSeeded("facilities", idByCode.size);
   return idByCode;
 }

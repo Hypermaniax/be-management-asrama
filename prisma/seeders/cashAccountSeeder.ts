@@ -1,4 +1,5 @@
 import { prisma } from "../../src/lib/prisma.ts";
+import { logSeeded, requireId, syncSoftRecord } from "./utils.ts";
 
 export type CashAccountSeed = {
   buildingCode: string;
@@ -15,25 +16,31 @@ export async function seedCashAccounts(buildingIds: Map<string, string>) {
   let count = 0;
 
   for (const account of CASH_ACCOUNTS) {
-    const buildingId = buildingIds.get(account.buildingCode);
-    if (!buildingId) continue;
+    const buildingId = requireId(buildingIds, account.buildingCode, "building");
+    const data = {
+      name: account.name,
+      type: "CASH" as const,
+      openingBalance: account.openingBalance,
+      deletedAt: null,
+    };
 
-    const existing = await prisma.cashAccount.findFirst({
-      where: { buildingId, deletedAt: null },
+    await syncSoftRecord({
+      findActive: () =>
+        prisma.cashAccount.findFirst({
+          where: { buildingId, deletedAt: null },
+          orderBy: { createdAt: "asc" },
+        }),
+      findAny: () =>
+        prisma.cashAccount.findFirst({
+          where: { buildingId },
+          orderBy: { createdAt: "asc" },
+        }),
+      create: () => prisma.cashAccount.create({ data: { buildingId, ...data } }),
+      update: (id) => prisma.cashAccount.update({ where: { id }, data }),
     });
-
-    const data = { name: account.name, openingBalance: account.openingBalance };
-
-    if (existing) {
-      await prisma.cashAccount.update({ where: { id: existing.id }, data });
-    } else {
-      await prisma.cashAccount.create({
-        data: { buildingId, type: "CASH", ...data },
-      });
-    }
     count++;
   }
 
-  console.log(`seeded ${count} cash accounts`);
+  logSeeded("cash accounts", count);
   return count;
 }

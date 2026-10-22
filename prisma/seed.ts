@@ -14,6 +14,8 @@ import { seedRooms } from "./seeders/roomSeeder.ts";
 import { seedUsers } from "./seeders/userSeeder.ts";
 
 async function main() {
+  console.log("\nSeeding database…");
+
   const menuIds = await seedMenus();
   const permissionIds = await seedPermissions();
   const roleIds = await seedRoles({ menuIds, permissionIds });
@@ -26,10 +28,23 @@ async function main() {
   const categoryCount = await seedCategories(buildingIds);
   const positionCount = await seedPositions(buildingIds, roleIds);
   await seedUsers({ roleIds });
-  await seedDemoUsers({ roleIds });
+  await seedDemoUsers({ roleIds, buildingIds });
 
   console.log(
-    `done — menus: ${menuIds.size}, permissions: ${permissionIds.size}, roles: ${roleIds.size}, buildings: ${buildingIds.size}, rooms: ${roomCount}, feeRules: ${feeRuleCount}, facilities: ${facilityCount}, documentTypes: ${documentTypeCount}, cashAccounts: ${cashAccountCount}, categories: ${categoryCount}, positions: ${positionCount}`,
+    [
+      "\nSeed selesai —",
+      `roles: ${roleIds.size}`,
+      `menus: ${menuIds.size}`,
+      `permissions: ${permissionIds.size}`,
+      `buildings: ${buildingIds.size}`,
+      `rooms: ${roomCount}`,
+      `feeRules: ${feeRuleCount}`,
+      `facilities: ${facilityCount}`,
+      `documentTypes: ${documentTypeCount}`,
+      `cashAccounts: ${cashAccountCount}`,
+      `categories: ${categoryCount}`,
+      `positions: ${positionCount}`,
+    ].join(" "),
   );
 }
 

@@ -78,7 +78,7 @@ Referensi endpoint: [`docs/api.md`](./api.md) (daftar semua API + izin + tujuann
 - Master: gedung, kamar, aturan biaya, fasilitas.
 - Pendaftaran: calon penghuni, dokumen dinamis, verifikasi, approve/reject.
 - Penempatan: `Occupancy` (+ bed label) & penugasan kamar mandi.
-- Keuangan: tagihan bulanan, pembayaran, alokasi, kas (masuk/keluar).
+- Keuangan: tagihan bulanan, pembayaran (termasuk **pengajuan mandiri warga + bukti**), alokasi, kas (masuk/keluar).
 - **Kegiatan**: event rutin & besar, sesi/pertemuan, panitia, absensi, anggaran, dokumentasi/LPJ.
 - **Pemilihan**: pemilihan ketua asrama — kandidat dari warga, voting 1 warga 1 suara, hasil/hitungan.
 - Laporan: tunggakan, saldo kas, pemasukan vs pengeluaran.
@@ -90,7 +90,7 @@ Referensi endpoint: [`docs/api.md`](./api.md) (daftar semua API + izin + tujuann
 
 ---
 
-## 5. Model data (ringkas 40 tabel)
+## 5. Model data (ringkas 41 tabel)
 
 > Detail + diagram: [`erd.md`](./erd.md).
 
@@ -102,7 +102,7 @@ Referensi endpoint: [`docs/api.md`](./api.md) (daftar semua API + izin + tujuann
 | Struktur       | `Building`, `Room`, `FeeRule`                                                             |
 | Penghuni       | `Occupancy`                                                                               |
 | Fasilitas      | `Facility`, `RoomFacility`, `PublicFacility`, `PublicFacilityAssignment`                  |
-| Billing        | `Invoice`, `InvoiceLine`, `Payment`, `PaymentAllocation`                                  |
+| Billing        | `Invoice`, `InvoiceLine`, `Payment`, `PaymentAllocation`, `PaymentSubmission`             |
 | Kas            | `CashAccount`, `Category`, `Expense`, `LedgerEntry`                                       |
 | Dokumen        | `DocumentType`, `File`, `DocumentSubmission`                                              |
 | **Kegiatan**   | `Event`, `EventSession`, `EventCommittee`, `EventAttendance`, `EventAttachment`           |
@@ -146,20 +146,20 @@ PositionAssignment(user, position, period, building)
 | `BENDAHARA`      | Kelola pembayaran & kas gedungnya.                   |
 | `PENGURUS`       | Role dasar pengurus (jabatan menimpanya bila perlu). |
 | `CALON_PENGHUNI` | Daftar, upload dokumen, edit profil.                 |
-| `PENGHUNI`       | Lihat tagihan/pembayaran sendiri + absensi.          |
+| `PENGHUNI`       | Lihat tagihan, **ajukan pembayaran + bukti**, absensi. |
 
-### Jabatan default (seed) — _perlu koreksi kamu_
+### Jabatan default (seed)
 
-| Code                | Nama                     | Scope       |
-| ------------------- | ------------------------ | ----------- |
-| `KETUA`             | Ketua                    | asrama-wide |
-| `WAKIL_KETUA`       | Wakil Ketua              | asrama-wide |
-| `SEKRETARIS`        | Sekretaris               | asrama-wide |
-| `BENDAHARA`         | Bendahara                | asrama-wide |
-| `KOOR_GEDUNG`       | Koordinator Gedung       | per gedung  |
-| `KOOR_ACARA`        | Koordinator Acara/Humas  | asrama-wide |
-| `KOOR_KEBERSIHAN`   | Koordinator Kebersihan   | asrama-wide |
-| `KOOR_PERLENGKAPAN` | Koordinator Perlengkapan | asrama-wide |
+| Code                | Nama                     | Scope       | Role       |
+| ------------------- | ------------------------ | ----------- | ---------- |
+| `KETUA`             | Ketua                    | asrama-wide | `PENGURUS` |
+| `WAKIL_KETUA`       | Wakil Ketua              | asrama-wide | `PENGURUS` |
+| `SEKRETARIS`        | Sekretaris               | asrama-wide | `PENGURUS` |
+| `BENDAHARA`         | Bendahara                | asrama-wide | `BENDAHARA`|
+| `KOOR_GEDUNG`       | Koordinator Gedung       | per gedung  | `PENGURUS` |
+| `KOOR_ACARA`        | Koordinator Acara/Humas  | asrama-wide | `PENGURUS` |
+| `KOOR_KEBERSIHAN`   | Koordinator Kebersihan   | asrama-wide | `PENGURUS` |
+| `KOOR_PERLENGKAPAN` | Koordinator Perlengkapan | asrama-wide | `PENGURUS` |
 
 ### Pohon menu (hierarkis, maks 2 level)
 
@@ -218,16 +218,15 @@ PositionAssignment(user, position, period, building)
 9. Akun Saya                   me                     –                          (parent, self-service)
    ├─ Profil Saya              me.profile             /me/profile                CALON_PENGHUNI, PENGHUNI, PENGURUS
    ├─ Tagihan Saya             me.invoice             /me/invoices               PENGHUNI
+   ├─ Pembayaran Saya          me.payment             /me/payments               PENGHUNI
    ├─ Dokumen Saya             me.document            /me/documents              CALON_PENGHUNI, PENGHUNI
    ├─ Absensi Saya             me.attendance          /me/attendance             PENGHUNI
    └─ Pemilihan Saya           me.election            /me/elections              PENGHUNI
 ```
 
-Total **9 menu root + 37 anak = 46 baris `Menu`**.
+Total **9 menu root + 38 anak = 47 baris `Menu`**.
 
-> **Fase 1 seed hanya 4 role default** — `SUPER_ADMIN` ("Admin Master"), `ADMIN_GEDUNG` ("Admin Gedung"), `PENGHUNI` ("Warga"), `CALON_PENGHUNI` ("Calon Penghuni"). `BENDAHARA` & `PENGURUS` menyusul (menu-nya sudah disiapkan di pohon di atas).
->
-> **Sementara** (sampai `BENDAHARA`/`PENGURUS` di-seed) menu mereka **dilipat ke `ADMIN_GEDUNG`**: Aturan Biaya, Kategori Kas, Pembayaran, Pengeluaran, Panitia → admin dapat akses penuh (dibatasi gedungnya); Organisasi & Pemilihan → admin **read-only** (`r*`).
+> **Seed role: 6 default** — `SUPER_ADMIN`, `ADMIN_GEDUNG`, `BENDAHARA`, `PENGURUS`, `PENGHUNI`, `CALON_PENGHUNI` (sejak Fase 20). Role `BENDAHARA`/`PENGURUS` memberi akses khusus sesuai pohon di atas; `ADMIN_GEDUNG` tetap mempertahankan akses penuh ke Aturan Biaya, Kategori Kas, Pembayaran, Pengeluaran, dan Panitia (dibatasi gedungnya), serta Organisasi & Pemilihan **read-only** (`r*`).
 
 ### Permission (resource × action)
 
@@ -286,13 +285,26 @@ sequenceDiagram
 
 ### 7.3 Keuangan (tagihan → bayar → kas)
 
+Dua jalur pembayaran: **admin/bendahara mencatat langsung** (tunai) dan **warga mengajukan sendiri** (transfer/QRIS + bukti).
+
 ```
-Generate tagihan bulanan (Invoice: ISSUED)
-   → pembayaran (Payment) → alokasi (PaymentAllocation) → PARTIAL/PAID
-   → LedgerEntry IN ke CashAccount gedung
+Generate tagihan bulanan (Invoice: ISSUED)              [admin/bendahara]
+   → warga lihat semua tagihannya (per bulan, termasuk tunggakan)
+   → warga pilih 1 tagihan + upload bukti (PaymentSubmission: PENDING)
+   → admin/bendahara periksa bukti
+       ├─ VALID   → Payment → alokasi (PaymentAllocation) → PARTIAL/PAID
+       │            → LedgerEntry IN ke CashAccount gedung
+       └─ TIDAK   → PaymentSubmission REJECTED (+ alasan) → warga ajukan ulang
    → pengeluaran (Expense) → LedgerEntry OUT
    → laporan: tunggakan, saldo kas, pemasukan vs pengeluaran
 ```
+
+- Satu pengajuan = **satu tagihan bulan** (boleh bulan lalu/tunggakan); nominal = **sisa tagihan**; bukti **wajib** untuk `TRANSFER`/`QRIS`.
+- `PaymentSubmission` **tidak** mengubah tagihan/kas sampai diverifikasi.
+- Verifikasi **atomik**: `Payment` + `PaymentAllocation` + update `Invoice` + `LedgerEntry IN` + status pengajuan dalam satu transaksi.
+- Hanya boleh ada **1 pengajuan `PENDING` per tagihan**; setelah `REJECTED` warga boleh mengajukan ulang.
+- `CASH` tetap dicatat admin langsung lewat `POST /api/payments` (tanpa pengajuan).
+- **Tanpa payment gateway** (Xendit dibatalkan — lingkup kecil); pembayaran diverifikasi manual oleh admin/bendahara.
 
 ### 7.4 Organisasi (kepengurusan)
 
@@ -382,6 +394,11 @@ MAIL_FROM=
 OTP_SECRET=           # kosong → fallback JWT_SECRET
 OTP_TTL_SECONDS=300
 
+AUTH_ACCESS_TTL_SECONDS=3600
+AUTH_REFRESH_TTL_SECONDS=2592000
+LOGIN_MAX_FAILURES=5
+LOGIN_WINDOW_SECONDS=900
+
 DORMITORY_TZ=Asia/Jakarta
 INVOICE_DUE_DAY=10
 STORAGE_DRIVER=local  # local | s3
@@ -402,14 +419,24 @@ MAX_UPLOAD_MB=5
 
 Non-produksi, password sama `Sewdaq123` (dari `demoUserSeeder`):
 
-| Email               | Role            |
-| ------------------- | --------------- |
-| `admin@gmail.com`   | `SUPER_ADMIN`   |
-| `gedung@gmail.com`  | `ADMIN_GEDUNG`  |
-| `calon@gmail.com`   | `CALON_PENGHUNI`|
-| `warga@gmail.com`   | `PENGHUNI`      |
+| Email                  | Role             | Catatan                                  |
+| ---------------------- | ---------------- | ---------------------------------------- |
+| `admin@gmail.com`      | `SUPER_ADMIN`    | Semua gedung                             |
+| `gedung@gmail.com`     | `ADMIN_GEDUNG`   | Scope **G1** (Gedung Putra)              |
+| `bendahara@gmail.com`  | `BENDAHARA`      | Scope **G1**                             |
+| `pengurus@gmail.com`   | `PENGURUS`       | Scope **G1**                             |
+| `warga@gmail.com`      | `PENGHUNI`       | Gender `MALE` (bisa ditempatkan di G1)   |
+| `calon@gmail.com`      | `CALON_PENGHUNI` | Gender `FEMALE` (bisa ditempatkan di G2) |
 
-Bootstrap admin dari `userSeeder` pakai `SEED_ADMIN_EMAIL`/`SEED_ADMIN_PASSWORD`.
+Seeder demo bersifat **deterministik**: role demo dinormalisasi menjadi tepat satu `UserRole` aktif dengan scope yang tercantum (duplikat aktif di-soft-delete, baris terhapus di-restore).
+
+Bootstrap admin dari `userSeeder` pakai `SEED_ADMIN_EMAIL`/`SEED_ADMIN_PASSWORD` (dev: `admin@kepri.local`).
+
+**Data testing** (`npm run db:seed:testing`, terpisah dari seed dasar): admin kedua gedung
+`gedung1@gmail.com` (scope G1) & `gedung2@gmail.com` (scope G2), 5 warga tertempatkan
+(`warga1-3` G1/101-102, `warga4-5` G2/201), calon `calon2@gmail.com` status `PENDING`,
+plus **periode kepengurusan aktif** `2026/2027` beserta penugasan pengurus
+(`KETUA`/`WAKIL`/`SEKRETARIS`/`BENDAHARA` + `KOOR_GEDUNG` G1 & G2). Idempotent — seed ulang tidak menduplikasi.
 
 ### Pola penulisan
 
@@ -446,6 +473,8 @@ Detail: [`phases.md`](./phases.md).
 | 16   | Laporan                                                         | ✅     |
 | 17   | Integrasi & test menyeluruh                                     | ✅     |
 | 18   | Email Queue + OTP Stateless                                     | ✅     |
+| 19   | **Pembayaran mandiri warga (bukti transfer + verifikasi admin)** | ✅     |
+| 20   | **Perbaikan seeder: role BENDAHARA/PENGURUS, jabatan → role, akun demo** | ✅     |
 
 ---
 
@@ -504,6 +533,11 @@ Detail: [`phases.md`](./phases.md).
 34. **Laporan** (Fase 16): laporan **read-only** (tanpa skema baru) — agregasi dari `Invoice`/`LedgerEntry`/`CashAccount`/`Expense`. `arrears` (tunggakan: `outstanding = total − paid`, status `ISSUED`/`PARTIAL`/`OVERDUE`), `cashBalances` (`opening + in − out` per akun), `incomeVsExpense` (net + rincian kategori, filter `from`/`to`), `eventBudgetRealization` (anggaran vs realisasi + `usagePercent`/`overBudget`). Cakupan gedung via `resolveBuildingScope`. Izin `report.READ`/`report.EXPORT` (menu `finance.report`); ekspor CSV via `src/lib/csv.ts`. Endpoint di `/api/reports`.
 35. **Lifecycle penghuni** (Fase 17): `approve` (PENDING→ACTIVE) otomatis memberi role **`PENGHUNI`** ke user (idempoten, `buildingId` scope null seperti demo warga; `CALON_PENGHUNI` tetap dipertahankan untuk akses dokumen). Menutup celah: penghuni baru tidak bisa membaca tagihan sendiri & tidak memenuhi syarat pemilih. Akses tetap dari `UserRole` (jabatan = struktur saja, Fase 12).
 36. **Tidak membocorkan hash password** (perbaikan keamanan): semua respons yang memuat `User` memakai select publik (`publicUserSelect` di `src/lib/userSelect.ts`, semua field **kecuali `password`**). Diterapkan di `userRepository` (kecuali `findByEmail` yang tetap penuh untuk verifikasi login) dan semua relasi `user`/`actor`/`candidate.user` (occupancy, event committee/attendance, election candidate/result, position assignment, public facility assignment, audit). Endpoint auth tetap memakai `toPublicUser` (`id`, `email`).
+37. **Pembayaran mandiri warga** (Fase 19): tagihan tetap dibuat admin/bendahara per bulan; warga bisa **memilih tagihan bulan mana pun** (termasuk tunggakan lama) lalu mengajukan pembayaran `TRANSFER`/`QRIS` **dengan bukti wajib** → `PaymentSubmission` `PENDING` (tidak mengubah tagihan/kas). Admin/bendahara memeriksa bukti: **valid** → verifikasi (atomik: `Payment` + alokasi + `Invoice` + `LedgerEntry IN`), **tidak valid** → `REJECTED` + alasan → warga boleh ajukan ulang. Nominal = **sisa tagihan** (penuh per bulan). Hanya **1 `PENDING` per invoice**. `CASH` tetap dicatat admin. **Payment gateway (Xendit) dibatalkan** karena lingkup kecil — verifikasi manual. Permission: `PENGHUNI` +`payment.CREATE`, `ADMIN_GEDUNG` +`payment.APPROVE`; `POST /api/payments` (admin) dijaga `payment.APPROVE`; menu baru `me.payment` (47 menu).
+38. **Perbaikan seeder** (Fase 20): semua role di-seed — `BENDAHARA` (feeRule/category/invoice/payment/cash CRUD + `report.READ/EXPORT` + `user.READ`) dan `PENGURUS` (event/election CRUD, `cash.CREATE/READ`, `category.READ`, `user.READ`, `period.READ`, `position.READ`). `positionSeeder` kini me-resolve role nyata (KETUA/WAKIL/SEKRETARIS/KOOR_* → `PENGURUS`, BENDAHARA → `BENDAHARA`), sehingga `Position.roleId` tidak lagi null. Seeder dirapikan: upsert **idempotent** + **restore baris soft-delete**, referensi building/role/menu **wajib ada** (gagal keras, bukan skip diam-diam), `roleSeeder` **sync diff** (bukan hapus-semua), demo user **deterministik** (role tunggal + scope), akun demo `bendahara@`/`pengurus@`, gender `warga`/`calon` diisi. **Auto-grant `UserRole` dari penugasan jabatan tetap ditunda** (keputusan Fase 12 dipertahankan).
+39. **Hardening sesi & login** (hasil audit keamanan): access token JWT **1 jam** (`AUTH_ACCESS_TTL_SECONDS`) + **refresh token opaque** (acak 32 byte; hanya hash SHA-256 disimpan di tabel `RefreshToken`, TTL 30 hari) dengan **rotasi** di `POST /auth/refresh` dan revocation via `POST /auth/logout`; **replay refresh yang sudah dicabut → semua sesi user dicabut** (deteksi pencurian). Plus **lockout per-akun**: ≥5 login gagal per email dalam 15 menit → 429 (dicatat in-memory; reset oleh login sukses; env `LOGIN_MAX_FAILURES`/`LOGIN_WINDOW_SECONDS`). Menutup temuan `Credential Stuffing` & `JWT Theft/Replay` pada `docs/security-checklist.md`.
+40. **Endpoint direktori RBAC untuk FE** (kebutuhan halaman Permission/Menu/Role detail): `GET /rbac/permissions` (140 baris `{id, code, resource, action}`), `GET /rbac/menus` (47 baris `{id, code, name, path, parentId, sortOrder}`), `GET /rbac/roles/:id/permissions` & `GET /rbac/roles/:id/menus` (state saat ini `permissionIds[]`/`menuIds[]`) — semua izin `role.READ` (tanpa resource permission baru); repos `listForRole` ditambahkan. FE kini bisa membuat tabel matriks resource×action + editor role dengan payload state yang terbaca.
+41. **Override permission per-user** (RBAC 2-layer): model `UserPermissionOverride {userId, permissionId, effect: GRANT|DENY}` (migration 20261022120000 + fix enum 20261022121000); `resolveAccess` kini menerapkan override di atas role (DENY buang, GRANT tambah). Endpoint `GET/PUT /rbac/users/:id/permission-overrides` (izin `role.READ`/`role.UPDATE`, replace penuh, duplikat/permission ngasal 400, SUPER_ADMIN ditolak 409, ter-audit). Menus tetap ikut role — hanya permission yang dioverride.
 
 ---
 
@@ -527,6 +561,7 @@ Detail: [`phases.md`](./phases.md).
 | **ElectionVote**                          | Suara warga (1 warga 1 suara; bisa abstain).                            |
 | **ElectionResult**                        | Hasil final per kandidat (votes, %, rank), direkam saat `CLOSED`.       |
 | **Invoice / Payment / PaymentAllocation** | Tagihan / uang masuk / pemetaan bayar.                                  |
+| **PaymentSubmission**                     | Pengajuan bayar warga + bukti (PENDING/VERIFIED/REJECTED).              |
 | **LedgerEntry / Reversal**                | Entri kas append-only / entri koreksi.                                  |
 | **RBAC**                                  | Role-Based Access Control (menu + permission).                          |
 | **Scope gedung**                          | Pembatasan akses role/jabatan ke gedung tertentu.                       |

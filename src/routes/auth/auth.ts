@@ -22,3 +22,5 @@ router.post(
   asyncHandler(authController.requestOTP),
 );
 router.post("/verify-otp", authLimiter, asyncHandler(authController.verifyOTP));
+router.post("/refresh", asyncHandler(authController.refresh));
+router.post("/logout", asyncHandler(authController.logout));

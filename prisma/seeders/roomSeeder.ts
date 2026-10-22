@@ -1,5 +1,6 @@
 import type { RoomStatus } from "../../src/generated/prisma/client.ts";
 import { prisma } from "../../src/lib/prisma.ts";
+import { logSeeded, requireId, syncSoftRecord } from "./utils.ts";
 
 export type RoomSeed = {
   buildingCode: string;
@@ -21,26 +22,30 @@ export async function seedRooms(buildingIds: Map<string, string>) {
   let count = 0;
 
   for (const room of ROOMS) {
-    const buildingId = buildingIds.get(room.buildingCode);
-    if (!buildingId) continue;
-
-    const existing = await prisma.room.findFirst({
-      where: { buildingId, number: room.number, deletedAt: null },
-    });
-
+    const buildingId = requireId(buildingIds, room.buildingCode, "building");
     const data = {
       capacity: room.capacity,
       status: room.status ?? ("ACTIVE" as const),
+      deletedAt: null,
     };
 
-    if (existing) {
-      await prisma.room.update({ where: { id: existing.id }, data });
-    } else {
-      await prisma.room.create({ data: { buildingId, number: room.number, ...data } });
-    }
+    await syncSoftRecord({
+      findActive: () =>
+        prisma.room.findFirst({
+          where: { buildingId, number: room.number, deletedAt: null },
+        }),
+      findAny: () =>
+        prisma.room.findFirst({
+          where: { buildingId, number: room.number },
+          orderBy: { createdAt: "asc" },
+        }),
+      create: () =>
+        prisma.room.create({ data: { buildingId, number: room.number, ...data } }),
+      update: (id) => prisma.room.update({ where: { id }, data }),
+    });
     count++;
   }
 
-  console.log(`seeded ${count} rooms`);
+  logSeeded("rooms", count);
   return count;
 }

@@ -27,4 +27,8 @@ export const config = {
   otpTtlSeconds: Number(process.env.OTP_TTL_SECONDS ?? 300),
   storageDriver: (process.env.STORAGE_DRIVER ?? "local") as "local" | "s3",
   storageDir: process.env.STORAGE_DIR ?? "storage/uploads",
+  authAccessTtlSeconds: Number(process.env.AUTH_ACCESS_TTL_SECONDS ?? 3600),
+  authRefreshTtlSeconds: Number(process.env.AUTH_REFRESH_TTL_SECONDS ?? 60 * 60 * 24 * 30),
+  loginMaxFailures: Number(process.env.LOGIN_MAX_FAILURES ?? 5),
+  loginWindowSeconds: Number(process.env.LOGIN_WINDOW_SECONDS ?? 900),
 };

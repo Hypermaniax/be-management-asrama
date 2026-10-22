@@ -39,11 +39,14 @@ Merancang backend: pendaftaran calon penghuni (dokumen dinamis), penempatan kama
 erDiagram
   %% AUTH
   User ||--o{ UserRole : "punya"
+  User ||--o{ RefreshToken : "bertahan"
+  User ||--o{ UserPermissionOverride : "override"
   %% RBAC
   Role ||--o{ UserRole : "diberikan"
   Building ||--o{ UserRole : "scope"
   Role ||--o{ RolePermission : "memiliki"
   Permission ||--o{ RolePermission : "dipakai"
+  Permission ||--o{ UserPermissionOverride : "mempegarangi user"
   Role ||--o{ RoleMenu : "boleh lihat"
   Menu ||--o{ RoleMenu : "tampil"
   Menu ||--o{ Menu : "parent-child"
@@ -101,6 +104,11 @@ erDiagram
   Invoice ||--o{ InvoiceLine : "rincian"
   Invoice ||--o{ PaymentAllocation : "dibayar"
   Payment ||--o{ PaymentAllocation : "dialokasikan"
+  User ||--o{ PaymentSubmission : "mengajukan"
+  User ||--o{ PaymentSubmission : "memverifikasi"
+  Invoice ||--o{ PaymentSubmission : "diajukan untuk"
+  File ||--o{ PaymentSubmission : "bukti"
+  Payment |o--o| PaymentSubmission : "dari pengajuan"
   %% KAS
   User ||--o{ Payment : "membayar"
   User ||--o{ Payment : "menerima"
@@ -189,6 +197,21 @@ erDiagram
     string buildingId FK
     datetime createdAt
     datetime deletedAt
+  }
+  RefreshToken {
+    string id PK
+    string userId FK
+    string tokenHash "hash SHA-256; plaintext tidak disimpan"
+    datetime expiresAt
+    datetime revokedAt "null = masih hidup"
+    datetime createdAt
+  }
+  UserPermissionOverride {
+    string id PK
+    string userId FK
+    string permissionId FK "unik per user"
+    PermissionEffect effect "GRANT | DENY"
+    datetime createdAt
   }
   Period {
     string id PK
@@ -367,6 +390,25 @@ erDiagram
     string invoiceId FK
     int amount
     datetime createdAt
+  }
+  PaymentSubmission {
+    string id PK
+    string code
+    string userId FK "pengaju"
+    string invoiceId FK
+    int amount
+    enum method
+    string referenceNo
+    string proofFileId FK
+    string note
+    enum status
+    string reviewNote
+    string reviewedById FK
+    datetime reviewedAt
+    string paymentId FK "terisi saat VERIFIED"
+    datetime createdAt
+    datetime updatedAt
+    datetime deletedAt
   }
   CashAccount {
     string id PK
@@ -596,12 +638,14 @@ enum PublicFacStatus  { ACTIVE MAINTENANCE }
 enum InvoiceStatus    { ISSUED PARTIAL PAID OVERDUE VOID }
 enum InvoiceLineKind  { RENT DISCOUNT EVENT OTHER }
 enum PaymentMethod    { CASH TRANSFER QRIS }
+enum PaymentSubmissionStatus { PENDING VERIFIED REJECTED }
 enum CategoryKind     { INCOME EXPENSE }
 enum LedgerDirection  { IN OUT }
 enum LedgerSource     { PAYMENT EXPENSE ADJUSTMENT TRANSFER OPENING REVERSAL }
 enum CashAccountType  { CASH BANK }
 enum DocStatus        { REQUESTED UPLOADED VERIFIED REJECTED }
 enum PermissionAction { CREATE READ UPDATE DELETE APPROVE VERIFY EXPORT }
+enum PermissionEffect { GRANT DENY }
 enum EventCategory    { RUTIN BESAR }
 enum EventScope       { ASRAMA GEDUNG }
 enum EventStatus      { PLANNED ONGOING DONE CANCELLED }
@@ -623,12 +667,14 @@ enum ElectionStatus   { DRAFT SCHEDULED OPEN CLOSED DONE CANCELLED }
 
 | Tabel            | Peran                                                                          |
 | ---------------- | ------------------------------------------------------------------------------ |
-| `Role`           | Kumpulan izin (SUPER_ADMIN, ADMIN_GEDUNG, BENDAHARA, CALON_PENGHUNI, PENGHUNI) |
+| `Role`           | Kumpulan izin (`SUPER_ADMIN`, `ADMIN_GEDUNG`, `BENDAHARA`, `PENGURUS`, `CALON_PENGHUNI`, `PENGHUNI`) |
 | `Permission`     | Izin detail `resource` + `action` (mis. `invoice.create`)                      |
 | `RolePermission` | Pemetaan role → permission                                                     |
-| `Menu`           | Navigasi hierarkis `parent→child` (9 root + 37 anak; detail `plan.md` §6)      |
+| `Menu`           | Navigasi hierarkis `parent→child` (9 root + 38 anak = 47 baris; detail `plan.md` §6) |
 | `RoleMenu`       | Menu yang tampil untuk sebuah role                                             |
 | `UserRole`       | User ↔ role, dengan `buildingId` sebagai scope data                            |
+| `UserPermissionOverride` | **RBAC 2-layer (Fase 21)**: override per-user di atas role — `GRANT` menambah izin yang tak dimiliki role, `DENY` mencabut izin role (`@@unique([userId, permissionId])`; SUPER_ADMIN tidak bisa di-override) |
+| `RefreshToken`   | Sesi refresh (Fase 21): hanya **hash SHA-256** token yang disimpan; `revokedAt` = dicabut (logout/rotasi/replay); FK cascade ke User |
 
 ### Organisasi
 
@@ -638,7 +684,7 @@ enum ElectionStatus   { DRAFT SCHEDULED OPEN CLOSED DONE CANCELLED }
 | `Position`           | Jabatan (asrama-wide atau per gedung); menunjuk `roleId` sebagai sumber akses; kode **unik per scope gedung** |
 | `PositionAssignment` | Penugasan orang pada jabatan, per periode & gedung; `end` = soft delete (boleh ditugaskan ulang) |
 
-> **Catatan (Fase 12):** `assignPosition` **hanya menyimpan struktur** — belum auto-grant `UserRole` dari `Position.roleId` (ditunda sampai role `BENDAHARA`/`PENGURUS` di-seed). Jabatan asrama-wide (`buildingId` null) hanya dikelola `SUPER_ADMIN`; `ADMIN_GEDUNG` mengelola jabatan dalam scope gedungnya.
+> **Catatan (Fase 12 & 20):** `assignPosition` **hanya menyimpan struktur** — belum auto-grant `UserRole` dari `Position.roleId` (keputusan ditunda, bukan karena role belum ada). Sejak Fase 20 semua role sudah di-seed, sehingga `Position.roleId` terisi: `KETUA`/`WAKIL_KETUA`/`SEKRETARIS`/`KOOR_*` → `PENGURUS`, `BENDAHARA` → `BENDAHARA`. Jabatan asrama-wide (`buildingId` null) hanya dikelola `SUPER_ADMIN`; `ADMIN_GEDUNG` mengelola jabatan dalam scope gedungnya.
 
 ### Struktur
 
@@ -666,6 +712,7 @@ enum ElectionStatus   { DRAFT SCHEDULED OPEN CLOSED DONE CANCELLED }
 | `InvoiceLine`       | Rincian (sewa, diskon, lain-lain)                  |
 | `Payment`           | Uang diterima (idempotent, ada bukti)              |
 | `PaymentAllocation` | Pemetaan payment → invoice (cicilan / multi-bulan) |
+| `PaymentSubmission` | Pengajuan bayar warga + bukti transfer (PENDING → VERIFIED/REJECTED); **tidak** mengubah kas/tagihan sampai diverifikasi |
 
 ### Kas
 
@@ -720,6 +767,7 @@ Saldo kas   = openingBalance + SUM(LedgerEntry IN) − SUM(LedgerEntry OUT)
 - Koreksi kas memakai entri `REVERSAL` baru, bukan menghapus entri (wajib alasan).
 - Pemasukan manual (bantuan/donasi) = `LedgerEntry` IN `sourceType ADJUSTMENT` + kategori INCOME.
 - `Payment.cashAccountId` → relasi `CashAccount` (Fase 11); posting `LedgerEntry IN` `sourceType PAYMENT` ditulis dalam **transaksi yang sama** dengan pembayaran.
+- `PaymentSubmission` (Fase 19) = pengajuan warga (satu tagihan bulan, `amount` = sisa tagihan, `proofFileId` wajib untuk `TRANSFER`/`QRIS`). Verifikasi membuat `Payment` + `PaymentAllocation` + update `Invoice` + `LedgerEntry IN` secara **atomik**, lalu menautkan `paymentId`. Pengajuan `REJECTED` tidak menyentuh kas/tagihan.
 - `Expense.eventId` → relasi `Event` (Fase 13); anggaran kegiatan dicatat via `cash.recordExpense` (posting `LedgerEntry` + kas), `scope=GEDUNG` wajib kategori segedung.
 
 ## Alur status
@@ -727,6 +775,7 @@ Saldo kas   = openingBalance + SUM(LedgerEntry IN) − SUM(LedgerEntry OUT)
 ```
 User       : PENDING → ACTIVE → CHECKOUT | INACTIVE ; PENDING → REJECTED
 Invoice    : ISSUED → PARTIAL → PAID ; ISSUED/PARTIAL → OVERDUE ; * → VOID
+PaymentSubmission : PENDING → VERIFIED | REJECTED ; REJECTED → (ajukan ulang)
 Document   : REQUESTED → UPLOADED → VERIFIED | REJECTED → UPLOADED
 Occupancy  : ACTIVE → ENDED
 Event      : PLANNED → ONGOING → DONE ; * → CANCELLED
@@ -749,6 +798,9 @@ Alur pendaftaran:
 | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `User`                                | partial unik `[buildingId, email]` (WHERE deletedAt IS NULL); `nationalId` partial unik; index `[buildingId, status]` |
 | `UserRole`                            | `@@unique([userId, roleId, buildingId])`                                                                              |
+| `RolePermission` / `RoleMenu`         | `@@id([roleId, permissionId|menuId])` (replace penuh via `setRole*`)                                                  |
+| `UserPermissionOverride`              | `@@unique([userId, permissionId])` — efek REPLACE penuh via `PUT overrides`; `DENY` + `GRANT` tidak boleh dobel user   |
+| `RefreshToken`                        | `tokenHash` @unique; FK `userId` onDelete Cascade (user hilang → sesi hilang)                                          |
 | `Role` / `Menu`                       | `code` partial unik                                                                                                   |
 | `Permission`                          | `@@unique([resource, action])`                                                                                        |
 | `Building`                            | `code` unik; tepat 2 baris (G1, G2)                                                                                   |
@@ -762,6 +814,7 @@ Alur pendaftaran:
 | `Invoice`                             | partial unik `[userId, periodYear, periodMonth] WHERE deletedAt IS NULL`; index `[buildingId, status]`                |
 | `Payment` / `Expense` / `LedgerEntry` | `idempotencyKey` unik                                                                                                 |
 | `PaymentAllocation`                   | `@@unique([paymentId, invoiceId])`; `SUM(amount) ≤ Payment.amount`                                                    |
+| `PaymentSubmission`                   | partial unik `[invoiceId] WHERE status='PENDING' AND deletedAt IS NULL` (1 pengajuan menunggu per tagihan); `paymentId` unik; index `[userId, status]` |
 | `DocumentType`                        | partial unik `[buildingId, code]`                                                                                     |
 | `DocumentSubmission`                  | `@@unique([userId, documentTypeId, version])`                                                                         |
 | `Period`                              | `code` unik; hanya 1 periode `isActive` (enforce di service)                                                          |
@@ -781,6 +834,7 @@ Alur pendaftaran:
 
 - **Soft delete** (`deletedAt`) di semua tabel mutable. Query default memfilter `deletedAt IS NULL`; unique index dibuat **partial** (mis. `Room`: `CREATE UNIQUE INDEX ... WHERE "deletedAt" IS NULL` ditulis via SQL mentah di migrasi, karena Prisma tak mendukung partial unique — lihat Fase 3).
 - **Immutable** (tanpa delete): `LedgerEntry`, `PaymentAllocation`, `ElectionVote`, `ElectionResult`. Koreksi kas lewat entri `REVERSAL`; suara & hasil pemilihan tidak diubah setelah tercatat.
+- **Fase 21** (auth): `RefreshToken` punya `revokedAt` (bukan soft delete) — rotasi/logout/replay menandai sebelum dihapus autopilot (FK cascade). `UserPermissionOverride` **replace penuh**, bukan soft delete per baris; efek terhitung live di `resolveAccess`.
 
 ## Isolasi per gedung
 
@@ -788,6 +842,8 @@ Alur pendaftaran:
 - `Position.buildingId`, `PositionAssignment.buildingId` → jabatan/penugasan per gedung (null = asrama-wide).
 - `Event.buildingId` → kegiatan per gedung (null bila `scope=ASRAMA`).
 - `UserRole.buildingId` → admin gedung hanya mengakses gedungnya; `null` = semua gedung (`SUPER_ADMIN`).
+- **Permission per-user (Fase 21)**: `UserPermissionOverride` hanya per-layer izin `permission` — menus & scope gedung **tidak** dioverride per-user.
+- `PaymentSubmission` tidak punya `buildingId` sendiri — scope gedung diturunkan dari `Invoice.buildingId` (admin hanya melihat pengajuan gedungnya).
 - Middleware `buildingScope` memfilter otomatis.
 
 ## Config baru
@@ -809,17 +865,18 @@ MAX_UPLOAD_MB=5
 src/
   repositories/{users,roles,permissions,menus,userRoles,buildings,rooms,feeRules,
                 occupancies,facilities,roomFacilities,publicFacilities,
-                invoices,payments,allocations,cashAccounts,categories,
+                invoices,payments,allocations,paymentSubmissions,cashAccounts,categories,
                 expenses,ledger,documentTypes,documents,files,
                 periods,positions,positionAssignments,
                 events,eventSessions,eventCommittees,eventAttendances,
                 elections,electionEligibleRoles,electionCandidates,
-                electionVotes,electionResults,audit}.ts
-  services/{auth,rbac,resident,occupancy,invoice,payment,cash,document,
+                electionVotes,electionResults,audit,
+                refreshTokens,userPermissionOverrides}.ts  # Fase 21
+  services/{auth,rbac,resident,occupancy,billing,cash,document,
             organization,event,election}/service.ts  # + service.test.ts
-  controller/{auth,rbac,resident,room,invoice,payment,cash,document,organization,event,election}.ts
+  controller/{auth,rbac,resident,room,invoice,payment,paymentSubmission,meBilling,cash,document,organization,event,election}.ts
   validations/{…}.ts
-  routes/{auth,rbac,resident,room,invoice,payment,cash,document,organization,event,election}/*.ts
+  routes/{auth,rbac,resident,room,invoice,payment,paymentSubmission,me,cash,document,organization,event,election}/*.ts
   middleware/{auth,permission,buildingScope}.ts
   lib/{storage,ledger,billing}.ts
   container.ts

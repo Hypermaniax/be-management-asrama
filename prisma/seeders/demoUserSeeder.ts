@@ -1,5 +1,7 @@
+import type { Gender } from "../../src/generated/prisma/client.ts";
 import { hashPassword } from "../../src/lib/password.ts";
 import { prisma } from "../../src/lib/prisma.ts";
+import { ensureUserRole, logSeeded, requireId } from "./utils.ts";
 
 export const DEMO_PASSWORD = "Sewdaq123";
 
@@ -7,22 +9,47 @@ type DemoUser = {
   email: string;
   name: string;
   role: string;
+  gender?: Gender;
+  buildingCode?: string;
 };
 
 export const DEMO_USERS: DemoUser[] = [
   { email: "admin@gmail.com", name: "Admin Master", role: "SUPER_ADMIN" },
-  { email: "gedung@gmail.com", name: "Admin Gedung", role: "ADMIN_GEDUNG" },
-  { email: "calon@gmail.com", name: "Calon Penghuni", role: "CALON_PENGHUNI" },
-  { email: "warga@gmail.com", name: "Warga", role: "PENGHUNI" },
+  {
+    email: "gedung@gmail.com",
+    name: "Admin Gedung",
+    role: "ADMIN_GEDUNG",
+    buildingCode: "G1",
+  },
+  {
+    email: "bendahara@gmail.com",
+    name: "Bendahara",
+    role: "BENDAHARA",
+    buildingCode: "G1",
+  },
+  {
+    email: "pengurus@gmail.com",
+    name: "Pengurus",
+    role: "PENGURUS",
+    buildingCode: "G1",
+  },
+  { email: "warga@gmail.com", name: "Warga", role: "PENGHUNI", gender: "MALE" },
+  {
+    email: "calon@gmail.com",
+    name: "Calon Penghuni",
+    role: "CALON_PENGHUNI",
+    gender: "FEMALE",
+  },
 ];
 
 type SeedDemoUsersInput = {
   roleIds: Map<string, string>;
+  buildingIds: Map<string, string>;
 };
 
-export async function seedDemoUsers({ roleIds }: SeedDemoUsersInput) {
+export async function seedDemoUsers({ roleIds, buildingIds }: SeedDemoUsersInput) {
   if (process.env.NODE_ENV === "production") {
-    console.log("skipped demoUserSeeder: production");
+    console.log("  – demo users: dilewati di production");
     return;
   }
 
@@ -35,25 +62,27 @@ export async function seedDemoUsers({ roleIds }: SeedDemoUsersInput) {
         email: demo.email,
         password: hashed,
         name: demo.name,
+        gender: demo.gender ?? null,
         emailVerified: true,
         status: "ACTIVE",
       },
-      update: { password: hashed, name: demo.name, emailVerified: true, status: "ACTIVE" },
+      update: {
+        password: hashed,
+        name: demo.name,
+        gender: demo.gender ?? null,
+        emailVerified: true,
+        status: "ACTIVE",
+        deletedAt: null,
+      },
     });
 
-    const roleId = roleIds.get(demo.role);
-    if (!roleId) {
-      console.log(`skipped role ${demo.role} for ${demo.email}: role not found`);
-      continue;
-    }
+    const roleId = requireId(roleIds, demo.role, "role");
+    const buildingId = demo.buildingCode
+      ? requireId(buildingIds, demo.buildingCode, "building")
+      : null;
 
-    const existing = await prisma.userRole.findFirst({
-      where: { userId: user.id, roleId, deletedAt: null },
-    });
-    if (!existing) {
-      await prisma.userRole.create({ data: { userId: user.id, roleId } });
-    }
-
-    console.log(`seeded demo user ${demo.email} (${demo.role})`);
+    await ensureUserRole(user.id, roleId, buildingId);
   }
+
+  logSeeded("demo users", DEMO_USERS.length);
 }

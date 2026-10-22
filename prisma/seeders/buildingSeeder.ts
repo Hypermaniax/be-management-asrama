@@ -1,5 +1,6 @@
 import type { Gender } from "../../src/generated/prisma/client.ts";
 import { prisma } from "../../src/lib/prisma.ts";
+import { logSeeded } from "./utils.ts";
 
 export type BuildingSeed = {
   code: string;
@@ -17,18 +18,14 @@ export async function seedBuildings() {
   const idByCode = new Map<string, string>();
 
   for (const building of BUILDINGS) {
-    const created = await prisma.building.upsert({
+    const row = await prisma.building.upsert({
       where: { code: building.code },
-      create: building,
-      update: {
-        name: building.name,
-        gender: building.gender,
-        address: building.address,
-      },
+      create: { ...building, isActive: true },
+      update: { ...building, isActive: true, deletedAt: null },
     });
-    idByCode.set(building.code, created.id);
+    idByCode.set(building.code, row.id);
   }
 
-  console.log(`seeded ${idByCode.size} buildings`);
+  logSeeded("buildings", idByCode.size);
   return idByCode;
 }

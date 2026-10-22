@@ -3,7 +3,7 @@
 Dokumentasi seluruh endpoint HTTP: izin yang dibutuhkan, tujuan, input, dan **contoh respons**.
 
 - Sumber: `src/routes/**`, `src/controller/**`, `src/validations/**`, `src/repositories/**`, `src/middleware/permission.ts`, [`plan.md`](./plan.md), [`erd.md`](./erd.md).
-- Total: **140 endpoint** pada **22 modul** (di bawah prefix `/api`) + `GET /api/health`.
+- Total: **148 endpoint** pada **24 modul** (di bawah prefix `/api`) + `GET /api/health`.
 - Sifat: **dokumentasi manual**. Bila menambah/mengubah route, perbarui file ini.
 
 > **Catatan contoh:** nilai `id`/`code`/waktu disederhanakan (`bld-1`, `usr-1`, `2026-10-19T…`) demi keterbacaan; di sistem sebenarnya berupa UUID/ISO-8601. Objek `User` selalu **tanpa field `password`** (lihat [Lampiran E](#lampiran-e--bentuk-objek-user-publik)).
@@ -64,17 +64,19 @@ Content-Type: application/json
 | [Penempatan](#12-penempatan) | `/occupancies`    | 3   | `resident.occupancy`      |
 | [Tagihan](#13-tagihan) | `/invoices`             | 4   | `finance.invoice`         |
 | [Pembayaran](#14-pembayaran) | `/payments`       | 3   | `finance.payment`         |
-| [Akun Kas](#15-akun-kas) | `/cash-accounts`      | 7   | `finance.cash`            |
-| [Kategori](#16-kategori) | `/categories`         | 4   | `master.category`         |
-| [Pengeluaran](#17-pengeluaran) | `/expenses`     | 3   | `finance.expense`         |
-| [Buku Kas](#18-buku-kas) | `/ledger`             | 3   | `finance.cash`            |
-| [Kegiatan](#19-kegiatan) | `/events`             | 21  | `event.*`                 |
-| [Pemilihan](#20-pemilihan) | `/elections`         | 15  | `election.*`              |
-| [Organisasi](#21-organisasi) | `/organization`    | 14  | `organization.*`          |
-| [Laporan](#22-laporan) | `/reports`              | 6   | `finance.report`          |
-| [Audit](#23-audit)     | `/audit-logs`           | 2   | `system.audit`            |
-| [File](#24-file)       | `/files`                | 1   | –                         |
-| [Health](#25-health)   | `/health`               | 1   | –                         |
+| [Pembayaran Mandiri](#15-pembayaran-mandiri-warga) | `/me` | 6 | `me.invoice`, `me.payment` |
+| [Verifikasi Pembayaran](#16-verifikasi-pembayaran) | `/payment-submissions` | 3 | `finance.payment` |
+| [Akun Kas](#17-akun-kas) | `/cash-accounts`      | 7   | `finance.cash`            |
+| [Kategori](#18-kategori) | `/categories`         | 4   | `master.category`         |
+| [Pengeluaran](#19-pengeluaran) | `/expenses`     | 3   | `finance.expense`         |
+| [Buku Kas](#20-buku-kas) | `/ledger`             | 3   | `finance.cash`            |
+| [Kegiatan](#21-kegiatan) | `/events`             | 21  | `event.*`                 |
+| [Pemilihan](#22-pemilihan) | `/elections`         | 15  | `election.*`              |
+| [Organisasi](#23-organisasi) | `/organization`    | 14  | `organization.*`          |
+| [Laporan](#24-laporan) | `/reports`              | 6   | `finance.report`          |
+| [Audit](#25-audit)     | `/audit-logs`           | 2   | `system.audit`            |
+| [File](#26-file)       | `/files`                | 1   | –                         |
+| [Health](#27-health)   | `/health`               | 1   | –                         |
 
 ---
 
@@ -673,9 +675,9 @@ Catat pembayaran & alokasikan ke tagihan (FIFO bila `allocations` tidak dikirim)
 
 | Method | Path                | Izin             | Tujuan                                    |
 | ------ | ------------------- | ---------------- | ----------------------------------------- |
-| POST   | `/payments`         | `payment.CREATE` | Catat pembayaran + alokasi + ledger masuk |
+| POST   | `/payments`         | `payment.APPROVE` | Catat pembayaran langsung (admin/bendahara) + alokasi + ledger masuk |
 | GET    | `/payments?userId=` | `payment.READ`   | Daftar pembayaran (filter user opsional)  |
-| GET    | `/payments/:id`     | `payment.READ`   | Detail pembayaran                         |
+| GET    | `/payments/:id`     | `payment.READ`   | Detail pembayaran (pemilik atau admin ber-scope) |
 
 **Body `POST`**
 
@@ -728,7 +730,135 @@ Catat pembayaran & alokasikan ke tagihan (FIFO bila `allocations` tidak dikirim)
 
 ---
 
-## 15. Akun Kas
+## 15. Pembayaran Mandiri Warga
+
+Warga melihat tagihannya sendiri dan mengajukan pembayaran **transfer/QRIS** dengan bukti. Pengajuan berstatus `PENDING` dan **belum** mengubah tagihan/kas sampai diverifikasi admin ([§16](#16-verifikasi-pembayaran)). `userId` selalu diambil dari JWT.
+
+| Method | Path                  | Izin             | Tujuan                                                              |
+| ------ | --------------------- | ---------------- | ------------------------------------------------------------------- |
+| GET    | `/me/invoices`        | `invoice.READ`   | Tagihan milik sendiri (filter `status`, `year`, `month`)            |
+| GET    | `/me/invoices/:id`    | `invoice.READ`   | Detail tagihan sendiri (403 bila bukan miliknya)                    |
+| POST   | `/me/payments/proof`  | `payment.CREATE` | Upload bukti bayar (multipart `file`, ≤10MB, PDF/PNG/JPEG)          |
+| POST   | `/me/payments`        | `payment.CREATE` | Ajukan pembayaran untuk **satu** tagihan (`PENDING`)                |
+| GET    | `/me/payments`        | `payment.READ`   | Daftar pengajuan pembayaran sendiri (filter `status`)               |
+| GET    | `/me/payments/:id`    | `payment.READ`   | Detail pengajuan sendiri (403 bila bukan miliknya)                  |
+
+**Aturan pengajuan**
+
+- `amount` **wajib** sama dengan `totalAmount − paidAmount` tagihan (bayar penuh per bulan, bukan cicil).
+- Tagihan harus outstanding (`ISSUED`, `PARTIAL`, `OVERDUE`); satu pengajuan = satu bulan tagihan (boleh tunggakan lama).
+- `method` hanya `TRANSFER` atau `QRIS`; `proofFileId` **wajib** dan harus file milik pengaju.
+- Hanya boleh ada **1 pengajuan `PENDING` per tagihan** (409 bila dobel). Setelah `REJECTED`, warga boleh mengajukan ulang.
+- `CASH` tidak lewat endpoint ini — admin mencatatnya di [`POST /payments`](#14-pembayaran).
+
+**Body `POST /me/payments`**
+
+```json
+{
+  "invoiceId": "inv-1",
+  "amount": 350000,
+  "method": "TRANSFER",
+  "proofFileId": "file-9",
+  "referenceNo": "TRX-2026-10-001",
+  "note": "Transfer BCA"
+}
+```
+
+**Query `GET /me/invoices`**: `status?`, `year?`, `month?` · **Query `GET /me/payments`**: `status?` (`PENDING|VERIFIED|REJECTED`)
+
+**Contoh respons**
+
+```json
+// GET /api/me/invoices → 200
+{
+  "status": "ok",
+  "data": [
+    {
+      "id": "inv-1", "code": "INV-0F8ED5ACEC92", "buildingId": "bld-1", "userId": "usr-2", "occupancyId": "occ-1", "periodYear": 2026, "periodMonth": 10, "dueDate": "2026-10-10T00:00:00.000Z", "baseAmount": 350000, "discountAmount": 0, "totalAmount": 350000, "paidAmount": 0, "status": "OVERDUE", "createdById": "usr-1", "issuedAt": "2026-10-18T22:25:12.851Z", "createdAt": "2026-10-18T22:25:12.851Z", "updatedAt": "2026-10-18T22:25:12.851Z", "deletedAt": null,
+      "lines": [ { "id": "line-1", "invoiceId": "inv-1", "kind": "RENT", "description": "Sewa kamar 10/2026", "amount": 350000, "createdAt": "2026-10-18T22:25:12.851Z" } ],
+      "submissions": [ { "id": "sub-1", "code": "SUB-1A2B3C4D5E6F", "status": "PENDING", "amount": 350000, "createdAt": "2026-10-21T03:00:00.000Z" } ]
+    }
+  ]
+}
+```
+
+```json
+// POST /api/me/payments/proof → 201 (multipart: file)
+{
+  "status": "payment proof uploaded",
+  "data": { "id": "file-9", "storageKey": "2026-10-21/uuid-bukti.pdf", "originalName": "bukti.pdf", "mimeType": "application/pdf", "sizeBytes": 18342, "checksum": "9f2c…", "uploadedById": "usr-2", "createdAt": "2026-10-21T03:01:00.000Z", "deletedAt": null }
+}
+```
+
+```json
+// POST /api/me/payments → 201
+{
+  "status": "payment submitted",
+  "data": {
+    "id": "sub-1", "code": "SUB-1A2B3C4D5E6F", "userId": "usr-2", "invoiceId": "inv-1", "amount": 350000, "method": "TRANSFER", "referenceNo": "TRX-2026-10-001", "proofFileId": "file-9", "note": "Transfer BCA", "status": "PENDING", "reviewNote": null, "reviewedById": null, "reviewedAt": null, "paymentId": null, "createdAt": "2026-10-21T03:02:00.000Z", "updatedAt": "2026-10-21T03:02:00.000Z", "deletedAt": null,
+    "invoice": { "id": "inv-1", "code": "INV-0F8ED5ACEC92", "buildingId": "bld-1", "userId": "usr-2", "periodYear": 2026, "periodMonth": 10, "dueDate": "2026-10-10T00:00:00.000Z", "totalAmount": 350000, "paidAmount": 0, "status": "OVERDUE" },
+    "proofFile": { "id": "file-9", "originalName": "bukti.pdf", "mimeType": "application/pdf", "sizeBytes": 18342 }
+  }
+}
+```
+
+---
+
+## 16. Verifikasi Pembayaran
+
+Admin/bendahara memeriksa bukti pengajuan. **Verifikasi atomik**: membuat `Payment` + `PaymentAllocation` + update `Invoice` + `LedgerEntry IN` + status `VERIFIED`. **Reject** hanya mengubah status (kas/tagihan tidak tersentuh). Ber-scope gedung (via `Invoice.buildingId`).
+
+| Method | Path                             | Izin               | Tujuan                                                             |
+| ------ | -------------------------------- | ------------------ | ------------------------------------------------------------------ |
+| GET    | `/payment-submissions`           | `payment.READ`     | Daftar pengajuan (filter `status`, `userId`)                       |
+| POST   | `/payment-submissions/:id/verify`| `payment.APPROVE`  | Verifikasi → `Payment` + alokasi + ledger IN → invoice `PAID`      |
+| POST   | `/payment-submissions/:id/reject`| `payment.APPROVE`  | Tolak pengajuan + alasan (warga dapat mengajukan ulang)            |
+
+**Body `verify`**: `{ cashAccountId? }` — opsional; default akun kas gedung tagihan.
+**Body `reject`**: `{ reason }` (wajib, ≤255).
+
+**Perilaku**
+
+- Hanya `PENDING` yang bisa diverifikasi/ditolak (409 bila bukan).
+- Verifikasi mengecek ulang sisa tagihan; bila nominal pengajuan tidak lagi sama → 409.
+- Idempoten: verifikasi ulang pengajuan `VERIFIED` mengembalikan `payment` yang sama tanpa membuat pembayaran baru.
+- `idempotencyKey` pembayaran = `submission:<id>` (unik).
+
+**Contoh respons**
+
+```json
+// GET /api/payment-submissions?status=PENDING → 200
+{
+  "status": "ok",
+  "data": [
+    {
+      "id": "sub-1", "code": "SUB-1A2B3C4D5E6F", "userId": "usr-2", "invoiceId": "inv-1", "amount": 350000, "method": "TRANSFER", "referenceNo": "TRX-2026-10-001", "proofFileId": "file-9", "note": "Transfer BCA", "status": "PENDING", "reviewNote": null, "reviewedById": null, "reviewedAt": null, "paymentId": null, "createdAt": "2026-10-21T03:02:00.000Z", "updatedAt": "2026-10-21T03:02:00.000Z", "deletedAt": null,
+      "invoice": { "id": "inv-1", "code": "INV-0F8ED5ACEC92", "buildingId": "bld-1", "userId": "usr-2", "periodYear": 2026, "periodMonth": 10, "dueDate": "2026-10-10T00:00:00.000Z", "totalAmount": 350000, "paidAmount": 0, "status": "OVERDUE" },
+      "user": { "id": "usr-2", "email": "warga@gmail.com", "name": "Warga", "phone": null, "emailVerified": true, "buildingId": "bld-1", "nationalId": null, "gender": "MALE", "guardianName": null, "guardianPhone": null, "address": null, "status": "ACTIVE", "submittedAt": null, "reviewedById": null, "reviewedAt": null, "rejectionReason": null, "createdAt": "2026-10-17T10:22:26.009Z", "updatedAt": "2026-10-18T23:21:19.529Z", "deletedAt": null }
+    }
+  ]
+}
+```
+
+```json
+// POST /api/payment-submissions/sub-1/verify → 200
+{
+  "status": "payment submission verified",
+  "data": {
+    "submission": { "id": "sub-1", "code": "SUB-1A2B3C4D5E6F", "status": "VERIFIED", "reviewedById": "usr-1", "reviewedAt": "2026-10-21T03:05:00.000Z", "paymentId": "pay-2" },
+    "payment": { "id": "pay-2", "code": "PAY-9C8B7A6D5E4F", "userId": "usr-2", "amount": 350000, "method": "TRANSFER", "cashAccountId": "acc-1", "referenceNo": "TRX-2026-10-001", "proofFileId": "file-9", "idempotencyKey": "submission:sub-1", "paidAt": "2026-10-21T03:05:00.000Z", "receivedById": "usr-1", "note": "Transfer BCA", "allocations": [ { "id": "alloc-2", "paymentId": "pay-2", "invoiceId": "inv-1", "amount": 350000, "createdAt": "2026-10-21T03:05:00.000Z" } ] }
+  }
+}
+```
+
+```json
+// POST /api/payment-submissions/sub-2/reject → 200
+{ "status": "payment submission rejected", "data": { "id": "sub-2", "status": "REJECTED", "reviewNote": "Bukti buram, mohon unggah ulang", "reviewedById": "usr-1", "reviewedAt": "2026-10-21T03:06:00.000Z" } }
+```
+
+---
+
+## 17. Akun Kas
 
 Akun kas/bank per gedung (satu per gedung). Ber-scope gedung.
 
@@ -788,7 +918,7 @@ Akun kas/bank per gedung (satu per gedung). Ber-scope gedung.
 
 ---
 
-## 16. Kategori
+## 18. Kategori
 
 Kategori kas (pemasukan/pengeluaran) per gedung. Ber-scope gedung.
 
@@ -825,7 +955,7 @@ Kategori kas (pemasukan/pengeluaran) per gedung. Ber-scope gedung.
 
 ---
 
-## 17. Pengeluaran
+## 19. Pengeluaran
 
 Catat pengeluaran (kas keluar) + ledger OUT. Memakai izin resource `cash`. Ber-scope gedung.
 
@@ -870,7 +1000,7 @@ Catat pengeluaran (kas keluar) + ledger OUT. Memakai izin resource `cash`. Ber-s
 
 ---
 
-## 18. Buku Kas
+## 20. Buku Kas
 
 Buku besar (`LedgerEntry`, **append-only**). Pemasukan manual & reversal. Ber-scope gedung.
 
@@ -906,7 +1036,7 @@ Buku besar (`LedgerEntry`, **append-only**). Pemasukan manual & reversal. Ber-sc
 
 ---
 
-## 19. Kegiatan
+## 21. Kegiatan
 
 Manajemen kegiatan (`Event`), sesi/agenda, panitia, absensi, anggaran, dan lampiran/LPJ. Ber-scope gedung.
 
@@ -1062,7 +1192,7 @@ Manajemen kegiatan (`Event`), sesi/agenda, panitia, absensi, anggaran, dan lampi
 
 ---
 
-## 20. Pemilihan
+## 22. Pemilihan
 
 Pemilihan ketua: kandidat, eligible role, voting (1 warga 1 suara), hasil, finalisasi ke jabatan. Ber-scope gedung.
 
@@ -1185,7 +1315,7 @@ Pemilihan ketua: kandidat, eligible role, voting (1 warga 1 suara), hasil, final
 
 ---
 
-## 21. Organisasi
+## 23. Organisasi
 
 Periode kepengurusan, jabatan, penugasan pengurus, dan struktur. Ber-scope gedung.
 
@@ -1297,7 +1427,7 @@ Periode kepengurusan, jabatan, penugasan pengurus, dan struktur. Ber-scope gedun
 
 ---
 
-## 22. Laporan
+## 24. Laporan
 
 Laporan turunan (read-only) dari data transaksional. Ber-scope gedung.
 
@@ -1375,7 +1505,7 @@ Listrik,OUT,250000
 
 ---
 
-## 23. Audit
+## 25. Audit
 
 Jejak audit (**immutable**). Otomatis diisi middleware untuk **semua mutasi sukses** oleh `SUPER_ADMIN`/`ADMIN_GEDUNG`, plus log manual kaya (`before`/`after`) untuk RBAC & keuangan.
 
@@ -1413,7 +1543,7 @@ Jejak audit (**immutable**). Otomatis diisi middleware untuk **semua mutasi suks
 
 ---
 
-## 24. File
+## 26. File
 
 | Method | Path         | Izin            | Tujuan                                                       |
 | ------ | ------------ | --------------- | ------------------------------------------------------------ |
@@ -1430,7 +1560,7 @@ Bila `fileId` tidak ditemukan → `404 { "status": "File not found" }`.
 
 ---
 
-## 25. Health
+## 27. Health
 
 | Method | Path      | Izin | Tujuan             |
 | ------ | --------- | ---- | ------------------ |
@@ -1460,7 +1590,7 @@ Izin = `resource` + `action`. `SUPER_ADMIN` memiliki **semua**. Kolom menunjukka
 | `occupancy`  |   ✓    |  ✓   |   ✓    |        |         |        |        |
 | `document`   |   ✓    |  ✓   |        |        |         |   ✓    |        |
 | `invoice`    |   ✓    |  ✓   |   ✓    |        |         |        |        |
-| `payment`    |   ✓    |  ✓   |        |        |         |        |        |
+| `payment`    |   ✓    |  ✓   |        |        |    ✓    |        |        |
 | `cash`       |   ✓    |  ✓   |   ✓    |   ✓    |         |        |        |
 | `category`   |   ✓    |  ✓   |   ✓    |   ✓    |         |        |        |
 | `report`     |        |  ✓   |        |        |         |        |   ✓    |
@@ -1481,17 +1611,17 @@ Izin = `resource` + `action`. `SUPER_ADMIN` memiliki **semua**. Kolom menunjukka
 | Code             | Deskripsi       | Izin utama (ringkas)                                                                                     | Scope        |
 | ---------------- | --------------- | -------------------------------------------------------------------------------------------------------- | ------------ |
 | `SUPER_ADMIN`    | Admin Master    | **Semua izin** + semua menu                                                                              | semua gedung |
-| `ADMIN_GEDUNG`   | Admin Gedung    | `building.READ`; `room/feeRule/facility/occupancy/invoice/payment/cash/position/event/election` CRUD; `document.READ+VERIFY`; `report.READ+EXPORT`; `user.READ`; `period.READ` | gedungnya    |
-| `PENGHUNI`       | Warga           | `invoice.READ`, `payment.READ`, `document.CREATE+READ`, `event.READ`, `election.READ`                    | –            |
+| `ADMIN_GEDUNG`   | Admin Gedung    | `building.READ`; `room/feeRule/facility/occupancy/invoice/payment/cash/position/event/election` CRUD; `payment.APPROVE`; `document.READ+VERIFY`; `report.READ+EXPORT`; `user.READ`; `period.READ` | gedungnya    |
+| `PENGHUNI`       | Warga           | `invoice.READ`, `payment.READ+CREATE`, `document.CREATE+READ`, `event.READ`, `election.READ`             | –            |
 | `CALON_PENGHUNI` | Calon penghuni  | `document.CREATE+READ`                                                                                    | –            |
 
 > `BENDAHARA` & `PENGURUS` **belum di-seed** (jabatan yang menunjuk role ini akan `roleId = null`).
 
 ### Menu per role
 
-- **SUPER_ADMIN**: seluruh 46 baris menu.
-- **ADMIN_GEDUNG**: semua menu kecuali `system.*` dan `me.invoice/me.document/me.attendance/me.election`.
-- **PENGHUNI**: `dashboard`, `event.list`, `event.session`, `event.attendance`, `election.list`, `election.result`, `me.profile`, `me.invoice`, `me.document`, `me.attendance`, `me.election`.
+- **SUPER_ADMIN**: seluruh 47 baris menu.
+- **ADMIN_GEDUNG**: semua menu kecuali `system.*` dan `me.invoice/me.payment/me.document/me.attendance/me.election`.
+- **PENGHUNI**: `dashboard`, `event.list`, `event.session`, `event.attendance`, `election.list`, `election.result`, `me.profile`, `me.invoice`, `me.payment`, `me.document`, `me.attendance`, `me.election`.
 - **CALON_PENGHUNI**: `dashboard`, `me.profile`, `me.document`.
 
 ### Akun demo (password `Sewdaq123`)
@@ -1510,7 +1640,7 @@ Izin = `resource` + `action`. `SUPER_ADMIN` memiliki **semua**. Kolom menunjukka
 ## Lampiran C — Catatan alur bisnis
 
 1. **Pendaftaran → penghuni**: register → verify OTP (role `CALON_PENGHUNI`) → admin `submit`/`profile` → `approve` (ACTIVE + role `PENGHUNI`) → penempatan kamar → assign KM.
-2. **Keuangan**: `POST /invoices/generate` (ISSUED) → `POST /payments` (alokasi → PARTIAL/PAID) → `LedgerEntry` IN ke akun kas gedung → `POST /expenses` (ledger OUT) → laporan.
+2. **Keuangan**: `POST /invoices/generate` (ISSUED) → **[warga]** `POST /me/payments/proof` + `POST /me/payments` (PENDING) → **[admin]** `POST /payment-submissions/:id/verify` (Payment + alokasi + ledger IN → PARTIAL/PAID) atau `reject` (warga ajukan ulang). Admin juga bisa mencatat langsung `POST /payments` (mis. CASH) → `POST /expenses` (ledger OUT) → laporan.
 3. **Kegiatan**: buat Event → sesi/agenda (atau `generate`) → absensi → `POST /events/:id/expenses` (realisasi anggaran) → lampiran/LPJ.
 4. **Pemilihan**: buat → eligible roles → kandidat → `open` → `vote` (1 warga 1 suara) → `close` (hitung hasil) → `result` → `finalize` ke jabatan (mis. `KETUA`).
 5. **Organisasi**: buat periode → jabatan (menunjuk `roleId`) → penugasan pengurus → `structure`. Penugasan = **struktur saja**; akses pengurus tetap dari `UserRole`.
@@ -1535,6 +1665,7 @@ Izin = `resource` + `action`. `SUPER_ADMIN` memiliki **semua**. Kolom menunjukka
 | `InvoiceStatus`       | `ISSUED`, `PARTIAL`, `PAID`, `OVERDUE`, `VOID`                        |
 | `InvoiceLineKind`     | `RENT`, `DISCOUNT`, `EVENT`, `OTHER`                                  |
 | `PaymentMethod`       | `CASH`, `TRANSFER`, `QRIS`                                            |
+| `PaymentSubmissionStatus` | `PENDING`, `VERIFIED`, `REJECTED`                                 |
 | `CashAccountType`     | `CASH`, `BANK`                                                        |
 | `CategoryKind`        | `INCOME`, `EXPENSE`                                                   |
 | `LedgerDirection`     | `IN`, `OUT`                                                           |

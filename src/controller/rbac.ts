@@ -7,6 +7,7 @@ import {
   assignRoleSchema,
   createRoleSchema,
   setMenusSchema,
+  setPermissionOverridesSchema,
   setPermissionsSchema,
   updateRoleSchema,
 } from "../validations/rbac.ts";
@@ -43,6 +44,43 @@ export const rbacController = {
     await rbacService.softDeleteRole(id);
     await auditRequest(req, { action: "DELETE", entity: "role", entityId: id });
     res.json({ status: "role deleted" });
+  },
+
+  async listPermissions(_req: Request, res: Response) {
+    const data = await rbacService.listPermissions();
+    res.json({ status: "ok", data });
+  },
+
+  async listMenus(_req: Request, res: Response) {
+    const data = await rbacService.listMenus();
+    res.json({ status: "ok", data });
+  },
+
+  async getRolePermissions(req: Request, res: Response) {
+    const data = await rbacService.getRolePermissions(paramId(req.params.id));
+    res.json({ status: "ok", data });
+  },
+
+  async getRoleMenus(req: Request, res: Response) {
+    const data = await rbacService.getRoleMenus(paramId(req.params.id));
+    res.json({ status: "ok", data });
+  },
+
+  async getUserOverrides(req: Request, res: Response) {
+    const data = await rbacService.getPermissionOverrides(paramId(req.params.id));
+    res.json({ status: "ok", data });
+  },
+
+  async setUserOverrides(req: Request, res: Response) {
+    const { overrides } = setPermissionOverridesSchema.parse(req.body);
+    const data = await rbacService.setPermissionOverrides(paramId(req.params.id), overrides);
+    await auditRequest(req, {
+      action: "UPDATE",
+      entity: "userPermissionOverride",
+      entityId: data.userId,
+      after: data,
+    });
+    res.json({ status: "permission overrides set", data });
   },
 
   async setPermissions(req: Request, res: Response) {

@@ -57,6 +57,36 @@ export const invoiceRepository = {
     });
   },
 
+  listByUser(
+    userId: string,
+    filters: { status?: InvoiceStatus; year?: number; month?: number } = {},
+  ) {
+    return prisma.invoice.findMany({
+      where: {
+        userId,
+        deletedAt: null,
+        ...(filters.status ? { status: filters.status } : {}),
+        ...(filters.year ? { periodYear: filters.year } : {}),
+        ...(filters.month ? { periodMonth: filters.month } : {}),
+      },
+      include: {
+        lines: true,
+        submissions: {
+          where: { status: "PENDING", deletedAt: null },
+          take: 1,
+          select: {
+            id: true,
+            code: true,
+            status: true,
+            amount: true,
+            createdAt: true,
+          },
+        },
+      },
+      orderBy: [{ periodYear: "desc" }, { periodMonth: "desc" }],
+    });
+  },
+
   list(buildingIds?: string[], filters: InvoiceFilters = {}) {
     return prisma.invoice.findMany({
       where: {

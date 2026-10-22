@@ -360,7 +360,7 @@ Aturan umum: `asyncHandler` untuk semua handler, error via `AppError`, semua que
 
 ### 12.5 Seed
 
-- [x] `positionSeeder`: KETUA, WAKIL_KETUA, SEKRETARIS, BENDAHARA, KOOR_ACARA, KOOR_KEBERSIHAN, KOOR_PERLENGKAPAN (asrama-wide) + KOOR_GEDUNG ×2 (G1, G2) = **9 jabatan**; `roleId` di-resolve by code (`PENGURUS`/`BENDAHARA` belum di-seed → `null`)
+- [x] `positionSeeder`: KETUA, WAKIL_KETUA, SEKRETARIS, BENDAHARA, KOOR_ACARA, KOOR_KEBERSIHAN, KOOR_PERLENGKAPAN (asrama-wide) + KOOR_GEDUNG ×2 (G1, G2) = **9 jabatan**; `roleId` di-resolve by code (saat Fase 12 `PENGURUS`/`BENDAHARA` belum di-seed → `null`; **terisi sejak Fase 20**)
 - [x] `roleSeeder`: `ADMIN_GEDUNG.position = [CREATE, READ, UPDATE, DELETE]` (total permission tetap **140**)
 - [x] Verifikasi: `npm run db:seed` ✅
 
@@ -584,3 +584,207 @@ Aturan umum: `asyncHandler` untuk semua handler, error via `AppError`, semua que
 - [x] Verifikasi: `npm run typecheck && npm test`
 - [x] Smoke end-to-end: register → OTP stateless → verify (200 + token) → login (200)
 - [x] Uji kirim nyata via Gmail SMTP (smtp.gmail.com:587 + App Password) → ke alamat eksternal berhasil
+
+---
+
+## FASE 19 — Pembayaran mandiri warga (bukti + verifikasi admin)
+
+**Tujuan:** warga bisa membayar tagihan **bulan mana pun** (termasuk tunggakan) dengan mengunggah bukti transfer/QRIS; admin/bendahara memverifikasi atau menolak. **Tanpa payment gateway** (Xendit dibatalkan) karena lingkup kecil.
+
+> **Keputusan (Fase 19):**
+> - Satu `PaymentSubmission` = **satu `Invoice`** (bulan tertentu); warga bebas memilih tagihan yang masih outstanding (`ISSUED`/`PARTIAL`/`OVERDUE`).
+> - Nominal = **sisa tagihan** (penuh per bulan, bukan cicil).
+> - Metode pengajuan hanya `TRANSFER`/`QRIS`; **bukti wajib**. `CASH` tetap dicatat admin langsung.
+> - Pengajuan `PENDING` **tidak** mengubah tagihan/kas. Verifikasi membuat `Payment` + alokasi + `LedgerEntry IN` + update `Invoice` + status pengajuan **dalam satu transaksi**.
+> - Hanya **1 `PENDING` per invoice** (partial unique); `REJECTED` membebaskan invoice untuk pengajuan ulang.
+> - Admin boleh memilih `cashAccountId` saat verifikasi (default: akun kas gedung).
+> - Permission: `PENGHUNI` +`payment.CREATE`; `ADMIN_GEDUNG` +`payment.APPROVE`; `POST /api/payments` admin dijaga `payment.APPROVE`; menu `me.payment`.
+
+### 19.1 Skema
+
+- [x] Enum `PaymentSubmissionStatus { PENDING VERIFIED REJECTED }`
+- [x] Model `PaymentSubmission { id, code @unique, userId, invoiceId, amount, method (PaymentMethod), referenceNo?, proofFileId?, note?, status, reviewNote?, reviewedById?, reviewedAt?, paymentId? @unique, createdAt, updatedAt, deletedAt }`
+- [x] Relasi: `user` (pengaju), `reviewedBy`, `invoice`, `proofFile` (`File`), `payment` (opsional)
+- [x] Index `[userId, status]`, `[invoiceId]`, `[deletedAt]`
+- [x] Partial unique `[invoiceId] WHERE status='PENDING' AND "deletedAt" IS NULL` (SQL mentah)
+- [x] Migrasi `<ts>_add_payment_submission` (via `migrate diff` + `migrate deploy`) + `prisma generate`
+- [x] Verifikasi: `npm run typecheck` ✅
+
+### 19.2 Repository
+
+- [x] `src/repositories/paymentSubmissions.ts` → `paymentSubmissionRepository`:
+  - `create(data, client?)`
+  - `findById(id)`
+  - `findPendingByInvoice(invoiceId)`
+  - `list(buildingIds?, { status?, userId? })` — scope via `invoice.buildingId`
+  - `setStatus(id, { status, reviewNote?, reviewedById?, reviewedAt?, paymentId? }, client?)`
+  - `listByUser(userId, { status? })`
+- [x] Perluas `src/repositories/invoices.ts`: `listByUser(userId, { status? })` untuk `/me/invoices`
+- [x] Verifikasi: `npm run typecheck` ✅
+
+### 19.3 Service
+
+- [x] `createBillingService` deps tambah `paymentSubmissions`, `files`
+- [x] `listMyInvoices(userId, filters)` + `getMyInvoice(userId, invoiceId)` (403 bila bukan miliknya)
+- [x] `createSubmission(userId, input)`:
+  - invoice milik user & outstanding; `amount === totalAmount - paidAmount`; method `TRANSFER`/`QRIS`
+  - `proofFileId` wajib, file ada & `uploadedById === userId`
+  - tolak bila sudah ada `PENDING` untuk invoice itu
+  - status `PENDING`
+- [x] `listMySubmissions(userId)` + `getMySubmission(userId, id)`
+- [x] `verifySubmission(id, reviewerId, { cashAccountId? })`:
+  - hanya `PENDING`; re-cek invoice masih outstanding & nominal = sisa
+  - transaksi: `payments.record` + update invoice + `ledger.create` IN + tautkan `paymentId` + status `VERIFIED`
+  - idempoten: `VERIFIED` → kembalikan payment yang ada; `REJECTED` → 409
+- [x] `rejectSubmission(id, reviewerId, reason)` — hanya `PENDING`, simpan `reviewNote`; tidak menyentuh kas/tagihan
+- [x] `listSubmissions(buildingIds?, filters)` (admin)
+- [x] Verifikasi: `npm run typecheck` ✅
+
+### 19.4 HTTP
+
+- [x] `src/validations/billing.ts`: `createSubmissionSchema`, `verifySubmissionSchema` (`cashAccountId?`), `rejectSubmissionSchema` (`reason`), `listSubmissionQuerySchema`
+- [x] `src/routes/me/me.ts` (mount `/api/me`):
+  - `GET /me/invoices`, `GET /me/invoices/:id` → `invoice.READ`
+  - `POST /me/payments/proof` (multipart `file`, ≤10MB, PDF/PNG/JPEG) → `payment.CREATE`
+  - `POST /me/payments` → `payment.CREATE`; `GET /me/payments`, `GET /me/payments/:id` → `payment.READ`
+  - `userId` **dipaksa dari JWT** (bukan body)
+- [x] `src/routes/paymentSubmission/paymentSubmission.ts` (mount `/api/payment-submissions`):
+  - `GET /` (`payment.READ`, scope gedung)
+  - `POST /:id/verify` (`payment.APPROVE`)
+  - `POST /:id/reject` (`payment.APPROVE`)
+- [x] Ubah guard `POST /api/payments` → `requirePermission("payment","APPROVE")`
+- [x] Wiring controller/service di `src/container.ts`
+- [x] Verifikasi: `curl` ✅
+
+### 19.5 Seed & permission
+
+- [x] `roleSeeder`: `PENGHUNI.payment = ["READ","CREATE"]`; `ADMIN_GEDUNG.payment += "APPROVE"`
+- [x] `menuSeeder`: tambah `me.payment` ("Pembayaran Saya", `/me/payments`) → total 9 root + 38 anak = **47 menu**
+- [x] `ROLE_MENUS.PENGHUNI` tambah `me.payment`
+- [x] Jalankan `npm run db:seed`
+- [x] Verifikasi: `npm run typecheck` ✅
+
+### 19.6 Keamanan
+
+- [x] `GET /api/payments/:id`: cek pemilik atau scope gedung (tutup IDOR)
+- [x] `GET /api/files/:id`: non-staf hanya boleh mengunduh file miliknya (`uploadedById === self`); staf (`SUPER_ADMIN`/`ADMIN_GEDUNG`) boleh
+- [x] Validasi `proofFileId` milik pengaju; tolak file yang di-soft-delete
+- [x] Verifikasi tetap idempoten (`Payment.idempotencyKey`, `LedgerEntry.idempotencyKey`)
+
+### 19.7 Test & docs
+
+- [x] `src/services/billing/service.test.ts`: createSubmission (bukan pemilik, invoice tidak outstanding, nominal ≠ sisa, tanpa bukti, duplikat PENDING), verify (payment + alokasi + invoice + ledger, idempoten, `REJECTED` → 409), reject (tidak ada ledger)
+- [x] Route coverage test tetap hijau (semua route punya penanda permission)
+- [x] Smoke `/tmp/opencode/smoke-payment-submission.mjs`: warga lihat tagihan → pilih bulan lama → upload bukti → submit → admin verifikasi → invoice PAID + kas IN; jalur tolak → ajukan ulang; warga 403 ke data orang lain
+- [x] `docs/api.md`: modul `/me` & `/payment-submissions`, contoh request/response, matriks izin (`payment.CREATE`/`APPROVE`), menu/role
+- [x] `docs/plan.md` / `docs/erd.md` sinkron
+- [x] Verifikasi akhir: `npm run typecheck` ✅ · `npm test` ✅ · smoke ✅
+
+---
+
+## FASE 20 — Perbaikan Seeder (role, jabatan, akun demo) ✅
+
+**Tujuan:** seeder deterministik & idempotent — tidak ada referensi role yang hilang, tidak ada duplikat `UserRole`, dan seed ulang tidak mengubah hasil.
+
+> **Keputusan (Fase 20):**
+> - Seed **6 role**: `SUPER_ADMIN`, `ADMIN_GEDUNG`, `BENDAHARA`, `PENGURUS`, `PENGHUNI`, `CALON_PENGHUNI`.
+> - `BENDAHARA`: `feeRule`/`category`/`invoice`/`payment`/`cash` CRUD + `report.READ/EXPORT` + `user.READ` (scope gedung).
+> - `PENGURUS`: `event`/`election` CRUD, `cash.CREATE/READ`, `category.READ`, `user.READ`, `period.READ`, `position.READ` (scope gedung).
+> - Jabatan default menunjuk role nyata: `KETUA`/`WAKIL_KETUA`/`SEKRETARIS`/`KOOR_*` → `PENGURUS`; `BENDAHARA` → `BENDAHARA`.
+> - **Auto-grant `UserRole` saat `assignPosition` tetap ditunda** (keputusan Fase 12 dipertahankan).
+> - Demo user deterministik: tepat **1 `UserRole` aktif** per role demo; scope `ADMIN_GEDUNG`/`BENDAHARA`/`PENGURUS` = **G1**; `warga` = `MALE`, `calon` = `FEMALE`.
+> - `ADMIN_GEDUNG` tetap mempertahankan akses penuh (Aturan Biaya, Kategori Kas, Pembayaran, Pengeluaran, Panitia) + Organisasi/Pemilihan read-only.
+
+### 20.1 Role & permission
+
+- [x] `ROLES` + `BENDAHARA`/`PENGURUS` (dengan deskripsi)
+- [x] `ROLE_PERMISSIONS` + `BENDAHARA`/`PENGURUS`; `PENGURUS.category = [READ]` (praktis untuk pilih kategori pengeluaran)
+- [x] `ROLE_MENUS` + `BENDAHARA` (12 menu) & `PENGURUS` (22 menu); filter `ADMIN_GEDUNG` dirapikan (`system*` + 5 `me.*` self-service)
+- [x] `roleSeeder` **sync diff** (`RolePermission`/`RoleMenu` hanya tambah/hapus yang berubah) + `isActive: true, deletedAt: null`
+- [x] Referensi permission/menu **wajib ada** (`requireId`) — gagal keras, bukan skip diam-diam
+- [x] Total tetap **140 permission / 47 menu / 6 role**
+
+### 20.2 Jabatan
+
+- [x] `positionSeeder`: `KETUA` → `PENGURUS`; semua jabatan pengurus → role nyata; `roleId` tidak null lagi
+- [x] Seed ulang **memperbaiki** `roleId = null` pada jabatan lama (update)
+- [x] Referensi building/role wajib ada (`requireId`)
+
+### 20.3 Akun demo & bootstrap
+
+- [x] `demoUserSeeder` terima `buildingIds`; tambah `bendahara@gmail.com` & `pengurus@gmail.com` (password `Sewdaq123`)
+- [x] Normalisasi `UserRole` demo: pilih/restore baris dengan scope yang dimaksud, soft-delete duplikat aktif (`ensureUserRole`)
+- [x] `gedung@gmail.com` → 1 `UserRole` aktif `ADMIN_GEDUNG` scope **G1** (duplikat lama dirapikan)
+- [x] `warga` gender `MALE`, `calon` gender `FEMALE`
+- [x] `userSeeder` bootstrap admin juga memakai `ensureUserRole` + restore soft-delete
+
+### 20.4 Idempotensi & restore
+
+- [x] Helper `prisma/seeders/utils.ts`: `requireId`, `logSeeded`, `syncSoftRecord`, `ensureUserRole`, `MB`
+- [x] Semua seeder scoped: aktif → update; tidak ada → restore baris soft-delete bila ada; baru → create
+- [x] Upsert global (`Building`, `Menu`, `Permission`, `Facility`, `Role`) reset `isActive`/`deletedAt`
+- [x] `seed.ts` mengoper `buildingIds` ke demo user + ringkasan hasil seed
+
+### 20.5 Verifikasi
+
+- [x] `npm run typecheck` ✅
+- [x] `npm run db:seed` **2×** → output & jumlah identik ✅
+- [x] Cek DB: 6 role, 9 jabatan `roleId` terisi, `gedung@G1` tunggal, `bendahara`/`pengurus` ada, gender demo terisi ✅
+- [x] Tidak ada duplikat aktif: menu, permission, room, category, document type, cash account, position ✅
+- [x] `npm test` ✅ (183/183)
+- [x] Docs disinkronkan (`plan.md`, `erd.md`, `phases.md`, `api.md`)
+
+### 20.6 Seeder testing (data skenario)
+
+- [x] `prisma/seeders/testingUserSeeder.ts` — `npm run db:seed:testing`:
+  - admin kedua gedung: `gedung1@gmail.com` (scope G1), `gedung2@gmail.com` (scope G2)
+  - 5 warga + **penempatan** (`warga1-3` G1/101-102, `warga4-5` G2/201; snapshot tarif dari `FeeRule` aktif)
+  - calon `calon2@gmail.com` status `PENDING` (untuk uji review pendaftaran)
+- [x] `prisma/seeders/testingStructureSeeder.ts` — **periode kepengurusan aktif** `2026/2027` (SK) + penugasan: `KETUA`→warga3, `WAKIL`→warga4, `SEKRETARIS`→warga1, `BENDAHARA`→warga2, `KOOR_GEDUNG` G1→warga, `KOOR_GEDUNG` G2→warga5; periode aktif lain otomatis dinonaktifkan
+- [x] Semua idempotent (`syncSoftRecord`/`ensureUserRole`); seed ulang 2× hasil identik ✅
+- [x] Script npm `db:seed:testing` + docs (`plan.md` §8, `api.md` Lampiran B)
+
+## FASE 21 — Hardening Auth & RBAC 2-layer ✅
+
+**Tujuan:** hasil audit keamanan (kategori 1) + gap API untuk halaman FE — keamanan sesi, direktori permission, dan override permission per-user.
+
+> **Keputusan (Fase 21):**
+> - **RBAC 2-layer**: permission tetap menempel di `Role` — **override per-user** (`UserPermissionOverride` `GRANT`/`DENY`) hanya pengecualian di atas role; menus & scope gedung tetap murni dari role.
+> - **SUPER_ADMIN tidak bisa di-override** (bypass kapabilitas, bukan permission set).
+> - Access token **pendek (1 jam)** + refresh token **opaque** yang menyimpan **hash saja** — rotasi wajib, replay nil-H → revoke semua sesi user.
+> - Lockout login per-akun **in-memory** (tanpa Redis, konsisten dengan OTP/antrian email).
+> - Docs keamanan & gap FE jadi bagian dari repo: `security-checklist.md`, `api-gaps.md` (checklist digunakan, bukan setengah laporan).
+
+### 21.1 Sesi & login (fitur keamanan)
+
+- [x] Migration `20261022100000_add_refresh_token` — tabel `RefreshToken` (`tokenHash` SHA-256 @unique, TTL, revokedAt, FK cascade)
+- [x] `JWT akses` TTL 24 jam → **1 jam** (`AUTH_ACCESS_TTL_SECONDS`)
+- [x] `POST /auth/refresh` — **rotasi**: token lama dicabut; pasangan baru (access + refresh)
+- [x] `POST /auth/logout` — cabut refresh token
+- [x] **Deteksi pencurian**: replay refresh yang sudah dicabut → **revoke semua sesi user** + 401
+- [x] **Lockout per-akun**: ≥5 login gagal per email / 15 mnt → 429 (env `LOGIN_MAX_FAILURES`, `LOGIN_WINDOW_SECONDS`); counter reset saat login sukses
+- [x] Public: `PUBLIC_PATHS` += `/auth/refresh`, `/auth/logout`
+
+### 21.2 Direktori RBAC (unblock halaman FE)
+
+- [x] `GET /rbac/permissions` — 140 baris `{id, code, resource, action, description}` (izin `role.READ`)
+- [x] `GET /rbac/menus` — 47 baris `{id, code, name, path, parentId, sortOrder}` (izin `role.READ`)
+- [x] `GET /rbac/roles/:id/permissions` & `/rbac/roles/:id/menus` — state saat ini (`permissionIds[]`/`menuIds[]`)
+- [x] Repos `listForRole` di `rolePermissions`/`roleMenus`
+
+### 21.3 Override permission per-user
+
+- [x] Migration `20261022120000_add_user_permission_override` + **fix enum** `20261022121000` (kolom `effect` TEXT → enum PG `PermissionEffect`)
+- [x] `resolveAccess`: role-grants dulu → override **DENY** membuang, **GRANT** menambah
+- [x] `GET /rbac/users/:id/permission-overrides` (`role.READ`) → `{userId, isSuperAdmin, grants[], denies[]}`
+- [x] `PUT /rbac/users/:id/permission-overrides` (`role.UPDATE`) — **replace penuh**; user ngasal 404; id permission ngasal 400; duplikat id 400; user SUPER_ADMIN 409
+- [x] Ter-audit via `auditRequest` (`entity=userPermissionOverride`)
+- [x] Total endpoint: **156**
+
+### 21.4 Verifikasi
+
+- [x] `npm run typecheck` ✅
+- [x] `npm test` ✅ (**196/196** — latest case: lockout, jend tindih, replay-token, rotasi, validasi override)
+- [x] Smoke: 429 rate-limit login / token `alg:none` → 401 / refresh+replay+logout / lockout 429 / override GRANT+DENY diterapkan ke `/rbac/me` ✅
+- [x] Server dev up tidak bareh (kill `tsx watch` yang lama)
+- [x] Docs disinkronkan: `api.md` (156 endpoint + catatan sesi + RBAC 2-layer), `plan.md` (changelog #39–41 + env AUTH_*), `security-checklist.md` (Kategori 1 = 10/10 ✅, Kategori 2 = 5 ✅ + N/A)

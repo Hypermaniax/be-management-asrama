@@ -44,28 +44,32 @@ model User {
 
   roles                     UserRole[]
   publicFacilityAssignments PublicFacilityAssignment[]
-  building                  Building? @relation(fields: [buildingId], references: [id])
-  reviewedBy                User?     @relation("UserReviewer", fields: [reviewedById], references: [id])
-  reviewedUsers             User[]    @relation("UserReviewer")
-  files                     File[]    @relation("FileUploader")
-  documentSubmissions       DocumentSubmission[] @relation("DocOwner")
-  requestedDocuments        DocumentSubmission[] @relation("DocRequester")
-  reviewedDocuments         DocumentSubmission[] @relation("DocReviewer")
+  building                  Building?                  @relation(fields: [buildingId], references: [id])
+  reviewedBy                User?                      @relation("UserReviewer", fields: [reviewedById], references: [id])
+  reviewedUsers             User[]                     @relation("UserReviewer")
+  files                     File[]                     @relation("FileUploader")
+  documentSubmissions       DocumentSubmission[]       @relation("DocOwner")
+  requestedDocuments        DocumentSubmission[]       @relation("DocRequester")
+  reviewedDocuments         DocumentSubmission[]       @relation("DocReviewer")
   occupancies               Occupancy[]
-  invoices                  Invoice[]            @relation("InvoiceOwner")
-  createdInvoices           Invoice[]            @relation("InvoiceCreator")
-  payments                  Payment[]            @relation("PaymentPayer")
-  receivedPayments          Payment[]            @relation("PaymentReceiver")
-  expenses                  Expense[]            @relation("ExpenseCreator")
-  ledgerEntries             LedgerEntry[]        @relation("LedgerCreator")
+  invoices                  Invoice[]                  @relation("InvoiceOwner")
+  createdInvoices           Invoice[]                  @relation("InvoiceCreator")
+  payments                  Payment[]                  @relation("PaymentPayer")
+  receivedPayments          Payment[]                  @relation("PaymentReceiver")
+  paymentSubmissions        PaymentSubmission[]        @relation("SubmissionOwner")
+  refreshTokens             RefreshToken[]             @relation("RefreshTokenOwner")
+  permissionOverrides       UserPermissionOverride[]   @relation("UserPermissionOverrides")
+  reviewedSubmissions       PaymentSubmission[]        @relation("SubmissionReviewer")
+  expenses                  Expense[]                  @relation("ExpenseCreator")
+  ledgerEntries             LedgerEntry[]              @relation("LedgerCreator")
   positionAssignments       PositionAssignment[]
-  createdEvents             Event[]              @relation("EventCreator")
+  createdEvents             Event[]                    @relation("EventCreator")
   eventCommittees           EventCommittee[]
   eventAttendances          EventAttendance[]
-  createdElections          Election[]           @relation("ElectionCreator")
+  createdElections          Election[]                 @relation("ElectionCreator")
   electionCandidacies       ElectionCandidate[]
-  electionVotes             ElectionVote[]       @relation("ElectionVoter")
-  auditLogs                 AuditLog[]           @relation("AuditActor")
+  electionVotes             ElectionVote[]             @relation("ElectionVoter")
+  auditLogs                 AuditLog[]                 @relation("AuditActor")
 
   @@index([buildingId, status])
   @@index([deletedAt])
@@ -92,11 +96,11 @@ model Role {
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
-  permissions   RolePermission[]
-  menus         RoleMenu[]
-  users         UserRole[]
-  positions     Position[]
-  eligibleFor   ElectionEligibleRole[]
+  permissions RolePermission[]
+  menus       RoleMenu[]
+  users       UserRole[]
+  positions   Position[]
+  eligibleFor ElectionEligibleRole[]
 
   @@index([deletedAt])
 }
@@ -109,7 +113,8 @@ model Permission {
   description String?
   createdAt   DateTime         @default(now())
 
-  roles RolePermission[]
+  roles         RolePermission[]
+  userOverrides UserPermissionOverride[]
 
   @@unique([resource, action])
 }
@@ -170,6 +175,25 @@ model UserRole {
   @@index([deletedAt])
 }
 
+model UserPermissionOverride {
+  id           String           @id @default(uuid())
+  userId       String
+  permissionId String
+  effect       PermissionEffect
+  createdAt    DateTime         @default(now())
+
+  user       User       @relation("UserPermissionOverrides", fields: [userId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permissionId])
+  @@index([userId])
+}
+
+enum PermissionEffect {
+  GRANT
+  DENY
+}
+
 enum Gender {
   MALE
   FEMALE
@@ -186,18 +210,18 @@ model Building {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  rooms            Room[]
-  feeRules         FeeRule[]
-  publicFacilities PublicFacility[]
-  users            User[]
-  documentTypes    DocumentType[]
-  invoices         Invoice[]
-  cashAccounts     CashAccount[]
-  categories       Category[]
-  positions        Position[]
+  rooms               Room[]
+  feeRules            FeeRule[]
+  publicFacilities    PublicFacility[]
+  users               User[]
+  documentTypes       DocumentType[]
+  invoices            Invoice[]
+  cashAccounts        CashAccount[]
+  categories          Category[]
+  positions           Position[]
   positionAssignments PositionAssignment[]
-  events           Event[]
-  elections        Election[]
+  events              Event[]
+  elections           Election[]
 
   @@index([deletedAt])
 }
@@ -253,12 +277,12 @@ model Occupancy {
 }
 
 model FeeRule {
-  id                 String   @id @default(uuid())
+  id                 String    @id @default(uuid())
   buildingId         String
   dueDayOfMonth      Int
   defaultMonthlyRate Int
-  effectiveFrom      DateTime @db.Date
-  createdAt          DateTime @default(now())
+  effectiveFrom      DateTime  @db.Date
+  createdAt          DateTime  @default(now())
   deletedAt          DateTime?
 
   building Building @relation(fields: [buildingId], references: [id])
@@ -338,8 +362,8 @@ model PublicFacility {
   updatedAt  DateTime        @updatedAt
   deletedAt  DateTime?
 
-  building    Building                  @relation(fields: [buildingId], references: [id])
-  facility    Facility                  @relation(fields: [facilityId], references: [id])
+  building    Building                   @relation(fields: [buildingId], references: [id])
+  facility    Facility                   @relation(fields: [facilityId], references: [id])
   assignments PublicFacilityAssignment[]
 
   @@index([buildingId])
@@ -381,6 +405,7 @@ model File {
   uploadedBy       User                 @relation("FileUploader", fields: [uploadedById], references: [id])
   submissions      DocumentSubmission[]
   paymentProofs    Payment[]            @relation("PaymentProof")
+  submissionProofs PaymentSubmission[]  @relation("SubmissionProof")
   expenseReceipts  Expense[]            @relation("ExpenseReceipt")
   eventAttachments EventAttachment[]
 
@@ -485,6 +510,7 @@ model Invoice {
   createdBy   User?               @relation("InvoiceCreator", fields: [createdById], references: [id])
   lines       InvoiceLine[]
   allocations PaymentAllocation[]
+  submissions PaymentSubmission[]
 
   @@index([buildingId, status])
   @@index([userId])
@@ -533,6 +559,7 @@ model Payment {
   proofFile   File?               @relation("PaymentProof", fields: [proofFileId], references: [id])
   cashAccount CashAccount?        @relation(fields: [cashAccountId], references: [id])
   allocations PaymentAllocation[]
+  submission  PaymentSubmission?  @relation("SubmissionPayment")
 
   @@index([userId])
   @@index([deletedAt])
@@ -550,6 +577,42 @@ model PaymentAllocation {
 
   @@unique([paymentId, invoiceId])
   @@index([invoiceId])
+}
+
+enum PaymentSubmissionStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+model PaymentSubmission {
+  id           String                  @id @default(uuid())
+  code         String                  @unique
+  userId       String
+  invoiceId    String
+  amount       Int
+  method       PaymentMethod
+  referenceNo  String?
+  proofFileId  String?
+  note         String?
+  status       PaymentSubmissionStatus @default(PENDING)
+  reviewNote   String?
+  reviewedById String?
+  reviewedAt   DateTime?
+  paymentId    String?                 @unique
+  createdAt    DateTime                @default(now())
+  updatedAt    DateTime                @updatedAt
+  deletedAt    DateTime?
+
+  user      User     @relation("SubmissionOwner", fields: [userId], references: [id])
+  reviewer  User?    @relation("SubmissionReviewer", fields: [reviewedById], references: [id])
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id])
+  proofFile File?    @relation("SubmissionProof", fields: [proofFileId], references: [id])
+  payment   Payment? @relation("SubmissionPayment", fields: [paymentId], references: [id])
+
+  @@index([userId, status])
+  @@index([invoiceId])
+  @@index([deletedAt])
 }
 
 enum CashAccountType {
@@ -693,9 +756,9 @@ model Position {
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
-  building       Building?            @relation(fields: [buildingId], references: [id])
-  role           Role?                @relation(fields: [roleId], references: [id])
-  assignments    PositionAssignment[]
+  building        Building?            @relation(fields: [buildingId], references: [id])
+  role            Role?                @relation(fields: [roleId], references: [id])
+  assignments     PositionAssignment[]
   eventCommittees EventCommittee[]
 
   @@index([buildingId])
@@ -716,9 +779,9 @@ model PositionAssignment {
   updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
 
-  period   Period   @relation(fields: [periodId], references: [id])
-  position Position @relation(fields: [positionId], references: [id])
-  user     User     @relation(fields: [userId], references: [id])
+  period   Period    @relation(fields: [periodId], references: [id])
+  position Position  @relation(fields: [positionId], references: [id])
+  user     User      @relation(fields: [userId], references: [id])
   building Building? @relation(fields: [buildingId], references: [id])
 
   @@index([userId])
@@ -985,4 +1048,17 @@ model AuditLog {
   @@index([entity, entityId])
   @@index([actorId])
   @@index([createdAt])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation("RefreshTokenOwner", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

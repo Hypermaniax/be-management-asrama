@@ -5,6 +5,8 @@ import type { RoleMenuRepository } from "../../repositories/roleMenus.ts";
 import type { RolePermissionRepository } from "../../repositories/rolePermissions.ts";
 import type { RoleRepository } from "../../repositories/roles.ts";
 import type { UserRoleRepository } from "../../repositories/userRoles.ts";
+import type { UserRepository } from "../../repositories/users.ts";
+import type { UserPermissionOverrideRepository } from "../../repositories/userPermissionOverrides.ts";
 
 export const SUPER_ADMIN = "SUPER_ADMIN";
 
@@ -38,12 +40,14 @@ type MenuRow = {
 };
 
 type RbacDeps = {
+  users: UserRepository;
   roles: RoleRepository;
   permissions: PermissionRepository;
   menus: MenuRepository;
   userRoles: UserRoleRepository;
   rolePermissions: RolePermissionRepository;
   roleMenus: RoleMenuRepository;
+  permissionOverrides: UserPermissionOverrideRepository;
 };
 
 const buildMenuTree = (rows: MenuRow[]): MenuNode[] => {
@@ -82,12 +86,14 @@ const buildMenuTree = (rows: MenuRow[]): MenuNode[] => {
 };
 
 export const createRbacService = ({
+  users,
   roles,
   permissions,
   menus,
   userRoles,
   rolePermissions,
   roleMenus,
+  permissionOverrides,
 }: RbacDeps) => ({
   async createRole(data: { code: string; name: string; description?: string | null }) {
     if (await roles.findByCode(data.code)) {
@@ -98,6 +104,32 @@ export const createRbacService = ({
 
   listRoles() {
     return roles.list();
+  },
+
+  listPermissions() {
+    return permissions.list();
+  },
+
+  listMenus() {
+    return menus.list();
+  },
+
+  async getRolePermissions(roleId: string) {
+    const role = await roles.findById(roleId);
+    if (!role) {
+      throw new AppError("Role not found", 404);
+    }
+    const rows = await rolePermissions.listForRole(roleId);
+    return { roleId, permissionIds: rows.map((row) => row.permissionId) };
+  },
+
+  async getRoleMenus(roleId: string) {
+    const role = await roles.findById(roleId);
+    if (!role) {
+      throw new AppError("Role not found", 404);
+    }
+    const rows = await roleMenus.listForRole(roleId);
+    return { roleId, menuIds: rows.map((row) => row.menuId) };
   },
 
   async updateRole(
@@ -156,6 +188,61 @@ export const createRbacService = ({
     return userRoles.remove(userRoleId);
   },
 
+  // Per-user permission overrides (GRANT/DENY) layered on top of role grants.
+  async getPermissionOverrides(userId: string) {
+    const user = await users.findById(userId);
+    if (!user) {
+      throw new AppError("User not found", 404);
+    }
+    const roles = await userRoles.listByUser(userId);
+    const superAdmin = roles.some((row) => row.role.code === SUPER_ADMIN);
+
+    const overrides = await permissionOverrides.listForUser(userId);
+    return {
+      userId,
+      isSuperAdmin: superAdmin,
+      grants: overrides
+        .filter((row) => row.effect === "GRANT")
+        .map((row) => ({ permissionId: row.permissionId, code: row.permission.code })),
+      denies: overrides
+        .filter((row) => row.effect === "DENY")
+        .map((row) => ({ permissionId: row.permissionId, code: row.permission.code })),
+    };
+  },
+
+  async setPermissionOverrides(
+    userId: string,
+    overrides: { permissionId: string; effect: "GRANT" | "DENY" }[],
+  ) {
+    const user = await users.findById(userId);
+    if (!user) {
+      throw new AppError("User not found", 404);
+    }
+    const roles = await userRoles.listByUser(userId);
+    if (roles.some((row) => row.role.code === SUPER_ADMIN)) {
+      throw new AppError("Super admin access cannot be overridden", 409);
+    }
+
+    const seen = new Set<string>();
+    for (const override of overrides) {
+      if (seen.has(override.permissionId)) {
+        throw new AppError("Duplicate permission in overrides", 400);
+      }
+      seen.add(override.permissionId);
+    }
+
+    const directive = await permissions.list();
+    const knownIds = new Set(directive.map((row) => row.id));
+    for (const permissionId of seen) {
+      if (!knownIds.has(permissionId)) {
+        throw new AppError("Unknown permission id", 400);
+      }
+    }
+
+    await permissionOverrides.replaceForUser(userId, overrides);
+    return this.getPermissionOverrides(userId);
+  },
+
   // Deep interface: collapses role/permission/menu joins into one per-request snapshot.
   // Callers never touch role tables directly; they read this flat result.
   async resolveAccess(userId: string): Promise<Access> {
@@ -183,6 +270,16 @@ export const createRbacService = ({
         if (menu.isActive && !menu.deletedAt) {
           menuRows.set(menu.id, menu);
         }
+      }
+    }
+
+    // Per-user overrides sit on top of role grants: DENY removes, GRANT adds.
+    const overrides = await permissionOverrides.listForUser(userId);
+    for (const override of overrides) {
+      if (override.effect === "DENY") {
+        permissionCodes.delete(override.permission.code);
+      } else {
+        permissionCodes.add(override.permission.code);
       }
     }
 

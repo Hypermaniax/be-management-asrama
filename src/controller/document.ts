@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { documentService, fileRepository, storage } from "../container.ts";
 import { AppError } from "../lib/errors.ts";
+import { permissionCode } from "../lib/permission.ts";
 import { assertBuildingAccess } from "../middleware/buildingScope.ts";
 import type { AccessRequest } from "../middleware/permission.ts";
 import {
@@ -92,6 +93,13 @@ export const documentController = {
     const file = await fileRepository.findById(paramId(req.params.id));
     if (!file) {
       throw new AppError("File not found", 404);
+    }
+    const { access, user } = req as AccessRequest;
+    const isStaff =
+      access?.isSuperAdmin ||
+      Boolean(access?.permissions.has(permissionCode("document", "VERIFY")));
+    if (!isStaff && file.uploadedById !== user?.id) {
+      throw new AppError("Forbidden", 403);
     }
     res.setHeader("Content-Type", file.mimeType);
     res.setHeader(

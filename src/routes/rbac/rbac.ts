@@ -10,6 +10,26 @@ router.get(
   requirePermission("role", "READ"),
   asyncHandler(rbacController.listRoles),
 );
+router.get(
+  "/permissions",
+  requirePermission("role", "READ"),
+  asyncHandler(rbacController.listPermissions),
+);
+router.get(
+  "/menus",
+  requirePermission("role", "READ"),
+  asyncHandler(rbacController.listMenus),
+);
+router.get(
+  "/roles/:id/permissions",
+  requirePermission("role", "READ"),
+  asyncHandler(rbacController.getRolePermissions),
+);
+router.get(
+  "/roles/:id/menus",
+  requirePermission("role", "READ"),
+  asyncHandler(rbacController.getRoleMenus),
+);
 router.post(
   "/roles",
   requirePermission("role", "CREATE"),
@@ -44,5 +64,15 @@ router.delete(
   "/user-roles/:id",
   requirePermission("role", "UPDATE"),
   asyncHandler(rbacController.revokeRole),
+);
+router.get(
+  "/users/:id/permission-overrides",
+  requirePermission("role", "READ"),
+  asyncHandler(rbacController.getUserOverrides),
+);
+router.put(
+  "/users/:id/permission-overrides",
+  requirePermission("role", "UPDATE"),
+  asyncHandler(rbacController.setUserOverrides),
 );
 router.get("/me", asyncHandler(rbacController.myAccess));

@@ -28,6 +28,7 @@ import { invoiceRepository } from "./repositories/invoices.ts";
 import { menuRepository } from "./repositories/menus.ts";
 import { occupancyRepository } from "./repositories/occupancies.ts";
 import { paymentRepository } from "./repositories/payments.ts";
+import { paymentSubmissionRepository } from "./repositories/paymentSubmissions.ts";
 import { periodRepository } from "./repositories/periods.ts";
 import { permissionRepository } from "./repositories/permissions.ts";
 import { reportRepository } from "./repositories/reports.ts";
@@ -43,6 +44,8 @@ import { roomRepository } from "./repositories/rooms.ts";
 import { userRepository } from "./repositories/users.ts";
 import { userRoleRepository } from "./repositories/userRoles.ts";
 import { createAuditService } from "./services/audit/service.ts";
+import { refreshTokenRepository } from "./repositories/refreshTokens.ts";
+import { userPermissionOverrideRepository } from "./repositories/userPermissionOverrides.ts";
 import { createAuthService } from "./services/auth/service.ts";
 import { createBillingService } from "./services/billing/service.ts";
 import { createBuildingService } from "./services/building/service.ts";
@@ -75,6 +78,7 @@ const otp = createOtpService({
 
 export const authService = createAuthService({
   users: userRepository,
+  refreshRepo: refreshTokenRepository,
   otp,
   assignResidentRole: async (userId) => {
     const role = await roleRepository.findByCode("CALON_PENGHUNI");
@@ -84,12 +88,14 @@ export const authService = createAuthService({
 });
 
 export const rbacService = createRbacService({
+  users: userRepository,
   roles: roleRepository,
   permissions: permissionRepository,
   menus: menuRepository,
   userRoles: userRoleRepository,
   rolePermissions: rolePermissionRepository,
   roleMenus: roleMenuRepository,
+  permissionOverrides: userPermissionOverrideRepository,
 });
 
 export const auditService = createAuditService({
@@ -141,6 +147,7 @@ export const occupancyService = createOccupancyService({
 export const billingService = createBillingService({
   invoices: invoiceRepository,
   payments: paymentRepository,
+  paymentSubmissions: paymentSubmissionRepository,
   occupancies: occupancyRepository,
   feeRules: feeRuleRepository,
   buildings: buildingRepository,
@@ -148,6 +155,8 @@ export const billingService = createBillingService({
   cashAccounts: cashAccountRepository,
   categories: categoryRepository,
   ledger: ledgerRepository,
+  files: fileRepository,
+  storage,
   transaction: runTransaction,
 });
 
